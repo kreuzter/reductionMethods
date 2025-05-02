@@ -1,0 +1,13 @@
+[project]
+name = "reductionMethods"
+version = "0.0"
+description = "Data Reduction Methods for blade cascade research"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy"
+]
+
+[project.urls]
+Homepage = "https://github.com/kreuzter/reductionMethods"
+Issues = "https://github.com/kreuzter/reductionMethods/issues"

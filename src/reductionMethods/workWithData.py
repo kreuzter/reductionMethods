@@ -1,5 +1,7 @@
+#! /usr/bin/env python3
+
 import numpy as np
-import auxiliaryFunctions as aux
+from . import auxiliaryFunctions as aux
 
 class TraversingData:
   """

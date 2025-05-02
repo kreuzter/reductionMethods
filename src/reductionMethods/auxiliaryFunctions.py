@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import numpy as np
 
 def ma_is(p, p0=1, gamma=1.4):
