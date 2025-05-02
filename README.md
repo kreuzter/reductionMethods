@@ -2,7 +2,15 @@
 
 Implementation and testing of Data Reduction Methods for blade cascade research.
 
-The definitions of the methods are taken from [1, 2, 3]
+The definitions of the methods are taken from [1, 2, 3].
+
+## Installation
+
+```bash
+git clone https://github.com/kreuzter/reductionMethods.git
+cd reductionMethods
+pip install .
+```
 
 ## References
 
