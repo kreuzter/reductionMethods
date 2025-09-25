@@ -2,10 +2,8 @@
 import sys
 
 import matplotlib.pyplot as plt
-
 import functionsForExamples as fe
-sys.path.append('../data-reduction-methods')
-import workWithData as wd
+from reductionMethods import workWithData as wd
 
 path = fe.initialize()
 

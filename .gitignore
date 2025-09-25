@@ -2,3 +2,4 @@ examples/data/*
 __pycache__/
 *.egg-info
 build
+_*

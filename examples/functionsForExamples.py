@@ -1,10 +1,8 @@
 import numpy as np
 import pandas as pd
-import sys
 import argparse
 
-sys.path.append('../data-reduction-methods')
-import auxiliaryFunctions as aux
+from reductionMethods import auxiliaryFunctions as aux
 
 fluid = lambda gamma = 1.4, r = 8314.3/28.96 : {'gamma':gamma, 'r':r, 'cp':gamma*r/(gamma-1)}
 
