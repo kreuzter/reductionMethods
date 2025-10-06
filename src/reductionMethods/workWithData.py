@@ -3,16 +3,24 @@
 import numpy as np
 from . import auxiliaryFunctions as aux
 
+import matplotlib.pyplot as plt
+
 class TraversingData:
   """
   Class for representation and manipulation with traversing data.
   """
 
-  def __init__(self, data:dict, inlet:dict, fluid = {'r':8314.3/28.96, 'gamma':1.4}):
+  def __init__(self, data:dict, inlet:dict, uncertainties = {'p':0., 'p0':0., 'alpha':0.}, fluid = {'r':8314.3/28.96, 'gamma':1.4}):
     self.fluid = fluid
     if 'cp' not in self.fluid.keys(): self.fluid['cp'] = self.fluid['gamma']*self.fluid['r']/(self.fluid['gamma']-1)
 
     self.rawData = data
+    self.rawData['T0'] = np.ones_like(data['p'])*inlet['T0']
+    self.rawData['p01']= np.ones_like(data['p'])*inlet['p0']
+    self.rawData['p1'] = np.ones_like(data['p'])*inlet['p' ]
+
+    self.data_uncertainties = { v : np.ones_like(self.rawData['p'])*uncertainties[v] for v in uncertainties.keys()}
+    self.dictiUncertainties_p_p0_alpha_T0 = {v:self.data_uncertainties[v] for v in ['p', 'p0', 'alpha', 'T0']}
     self.inlet   = inlet
 
     self.pitch = self.rawData['x'].max()-self.rawData['x'].min()
@@ -33,23 +41,42 @@ class TraversingData:
     """Preprocess traversing data."""
 
     self.rawData['alpha_d'] = np.rad2deg(self.rawData['alpha'])
-    self.rawData = self.otherFrom_p_p0_alpha(self.rawData)
+    self.rawData = self.otherFrom_p_p0_alpha(self.rawData, self.data_uncertainties)
     self.rawData['loss_kin'], self.rawData['loss_tot_dynIn'], self.rawData['loss_tot_dynOut'], self.rawData['loss_tot_tot'] = self.getLosses(self.rawData) 
 
-  def otherFrom_p_p0_alpha(self, dicti:dict):
-    dicti['M']     = aux.ma_is(dicti['p'], dicti['p0'], self.fluid['gamma'])
-    dicti['T']     = aux.t(dicti['M'], self.inlet['T0'], self.fluid['gamma'])
-    dicti['rho']   = aux.rho(dicti['M'], dicti['p0']/self.inlet['T0']/self.fluid['r'], self.fluid['gamma'])
-    dicti['v_mag'] = dicti['M'] * np.sqrt( self.fluid['gamma'] * self.fluid['r'] * dicti['T'] )
-    dicti['v_x']   = dicti['v_mag'] * np.cos(dicti['alpha'])
-    dicti['v_y']   = dicti['v_mag'] * np.sin(dicti['alpha'])
+  def otherFrom_p_p0_alpha(self, dicti:dict, dictiUncertainties:dict):
+    for variable in aux.from_p_p0_alpha_T0.keys():
 
+      dicti[variable] = aux.from_p_p0_alpha_T0[variable](dicti['p'],dicti['p0'],dicti['alpha'], dicti['T0'], self.fluid)
+
+      localUncs = dict()
+      for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
+        localDicti = { v : dicti[v] for v in dicti.keys()}
+        localDicti[variable2] = dicti[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2]
+        localUncs[variable2] = aux.from_p_p0_alpha_T0[variable](localDicti['p'],localDicti['p0'],localDicti['alpha'], localDicti['T0'],self.fluid)-dicti[variable]
+
+      dictiUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
+    self.dictiUncertainties = dictiUncertainties
     return dicti
 
   def fluxes(self):
     if not (hasattr(self, 'trueFluxes')):
       print('Computing fluxes.')
-      self.trueFluxes = aux.fluxesInt(self.rawData, self.inlet['p0'], self.pitch, self.fluid)
+
+      self.trueFluxes = dict()
+      self.trueFluxesUncertainties = dict()
+      for fluxName in aux.fluxesIntegrands.keys():
+      
+        self.trueFluxes[fluxName] = 1/self.pitch*np.trapezoid(aux.fluxesIntegrands[fluxName](self.rawData['p'],self.rawData['p0'],self.rawData['alpha'], self.rawData['T0'], self.rawData['p01'], self.fluid), self.rawData['x'])
+  
+        localUncs = dict()
+        for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
+          localDicti = { v : self.rawData[v] for v in self.rawData.keys()}
+          localDicti[variable2] = self.rawData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2]
+          localUncs[variable2] = 1/self.pitch*np.trapezoid(aux.fluxesIntegrands[fluxName](localDicti['p'],localDicti['p0'],localDicti['alpha'], localDicti['T0'], localDicti['p01'], self.fluid), localDicti['x']) -self.trueFluxes[fluxName]
+  
+        self.trueFluxesUncertainties[fluxName] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
+
 
     return self.trueFluxes
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import numpy as np
 
 import matplotlib.pyplot as plt
 import functionsForExamples as fe
@@ -7,7 +8,7 @@ from reductionMethods import workWithData as wd
 
 path = fe.initialize()
 
-Dataset = wd.TraversingData(**fe.preprocessSPLEENdata(path, 0.90, 120e3, 0.5))
+Dataset = wd.TraversingData(**fe.preprocessSPLEENdata(path, 0.90, 120e3, 0.5), uncertainties={'p':50, 'p0':50, 'alpha':np.deg2rad(0.6)})
 fig, ax = Dataset.plotRawData([['p', 'p0'], ['v_x', 'v_y'], ['T']], ylabels=[None,r'$w$ [m/s]', None])
 plt.show()
 
