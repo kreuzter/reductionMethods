@@ -26,7 +26,7 @@ class TraversingData:
     self.pitch = self.rawData['x'].max()-self.rawData['x'].min()
 
     self.prepro()
-
+  
   def reduceByAll(self, mm = True):
     toRet = {}
     for name in dir(self):
@@ -50,13 +50,16 @@ class TraversingData:
       dicti[variable] = aux.from_p_p0_alpha_T0[variable](dicti['p'],dicti['p0'],dicti['alpha'], dicti['T0'], self.fluid)
 
       localUncs = dict()
-      for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
+      for variable2 in dictiUncertainties.keys():
         localDicti = { v : dicti[v] for v in dicti.keys()}
-        localDicti[variable2] = dicti[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2]
+        localDicti[variable2] = dicti[variable2] + dictiUncertainties[variable2]
         localUncs[variable2] = aux.from_p_p0_alpha_T0[variable](localDicti['p'],localDicti['p0'],localDicti['alpha'], localDicti['T0'],self.fluid)-dicti[variable]
 
-      dictiUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
-    self.dictiUncertainties = dictiUncertainties
+      try: 
+        dictiUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
+      except:
+        dictiUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ))  
+    
     return dicti
 
   def fluxes(self):
@@ -76,7 +79,6 @@ class TraversingData:
           localUncs[variable2] = 1/self.pitch*np.trapezoid(aux.fluxesIntegrands[fluxName](localDicti['p'],localDicti['p0'],localDicti['alpha'], localDicti['T0'], localDicti['p01'], self.fluid), localDicti['x']) -self.trueFluxes[fluxName]
   
         self.trueFluxesUncertainties[fluxName] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
-
 
     return self.trueFluxes
 
@@ -138,7 +140,9 @@ class TraversingData:
   def averaging(func):
     def wrapper(self):
       result = func(self)
-      result = self.otherFrom_p_p0_alpha(result)
+      result['T0'] = self.inlet['T0']
+      result['uncertainties']['T0'] = self.data_uncertainties['T0'][0]
+      result = self.otherFrom_p_p0_alpha(result, result['uncertainties'])
       return result
     return wrapper
   
@@ -285,10 +289,37 @@ class TraversingData:
       'method_abbr' : r'$A$',
     }
 
+    reduced['uncertainties'] = {v:self.dictiUncertainties_p_p0_alpha_T0[v][0] for v in self.dictiUncertainties_p_p0_alpha_T0.keys()}
+
     for v in ['p','p0','alpha']: 
       reduced[v] = self.weightedAverage('area', v)
-    
+
     return reduced
+
+  def weighted(self, how, values, p, p0, alpha, T0, p01, fluid):
+    if how == 'massFlux':
+      return np.trapezoid(values*aux.fluxesIntegrands['I_M'](p, p0, alpha, T0, p01, fluid), self.rawData['x'] ) / np.trapezoid(aux.fluxesIntegrands['I_M'](p, p0, alpha, T0, p01, fluid), self.rawData['x'] )
+    elif how == 'area':
+      return np.trapezoid( values, self.rawData['x'] )/self.pitch
+  
+  angleAsArctanOfFluxes = lambda self, p, p0, alpha, T0, p01, fluid: np.arctan( np.trapezoid(aux.fluxesIntegrands['I_C'](p, p0, alpha, T0, p01, fluid), self.rawData['x'] )/np.trapezoid(aux.fluxesIntegrands['I_A'](p, p0, alpha, T0, p01, fluid), self.rawData['x'] ) )
+  
+  def functionsForAveraging(self):
+    dicti = { how : {
+      'p'     : lambda p, p0, alpha, T0, p01, fluid: self.weighted(how,     p, p, p0, alpha, T0, p01, fluid),
+      'p0'    : lambda p, p0, alpha, T0, p01, fluid: self.weighted(how,    p0, p, p0, alpha, T0, p01, fluid),
+      'alpha' : lambda p, p0, alpha, T0, p01, fluid: self.weighted(how, alpha, p, p0, alpha, T0, p01, fluid),
+    } for how in ['massFlux', 'area'] }
+
+    dicti['momentum'] = {
+      'p'     : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',  p, p, p0, alpha, T0, p01, fluid),
+      'p0'    : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',  p, p, p0, alpha, T0, p01, fluid)*(1-1/T0*(self.weighted('mass', aux.from_p_p0_alpha_T0['v_mag'](p, p0, alpha, T0, fluid), p, p0, alpha, T0, p01, fluid))/2/fluid['cp'])**(fluid['gamma']/(1-fluid['gamma'])),
+      'alpha' : lambda p, p0, alpha, T0, p01, fluid: self.angleAsArctanOfFluxes(p, p0, alpha, T0, p01, fluid)
+    }
+    return dicti
+
+  def reduction_universalAveraging():
+    return 1
 
   @reductionMethod
   @averaging
@@ -298,9 +329,20 @@ class TraversingData:
       'method_abbr' : r'$\dot{m}$',
     }
 
-    for v in ['p','p0','alpha']: 
-      reduced[v] = self.weightedAverage('mass', v)
-    
+    for variable in ['p','p0','alpha']: 
+      reduced[variable] = self.weightedAverage('mass', variable)
+
+    reduced['uncertainties'] = dict()
+    for variable in ['p','p0','alpha']: 
+      localUncs = dict()
+      for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
+        localDicti = { v : self.rawData[v] for v in self.rawData.keys()}
+        localDicti[variable2] = self.rawData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2]
+
+        localUncs[variable2] = 1/self.pitch*np.trapezoid( localDicti[variable]*aux.fluxesIntegrands['I_M'](localDicti['p'], localDicti['p0'], localDicti['alpha'], localDicti['T0'], localDicti['p01'], self.fluid), self.rawData['x'] )/self.fluxes()['I_M'] - reduced[variable]
+      
+      reduced['uncertainties'][variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ))  
+
     return reduced
 
   @reductionMethod
