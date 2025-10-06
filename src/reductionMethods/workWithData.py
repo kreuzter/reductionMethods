@@ -55,13 +55,13 @@ class TraversingData:
 
   def trueTotalPressureLossCoefficient_totIn(self):
     fluxes = self.fluxes()
-    ds = fluxes['i_s']/fluxes['i_m']
+    ds = fluxes['I_S']/fluxes['I_M']
     coeff = 1 - np.exp(-ds/self.fluid['r'])
     return coeff
 
   def trueTotalPressureLossCoefficient_dynIn(self):
     fluxes = self.fluxes()
-    ds = fluxes['i_s']/fluxes['i_m']
+    ds = fluxes['I_S']/fluxes['I_M']
     coeff = self.inlet['p0']/(self.inlet['p0']-self.inlet['p'])*(1 - np.exp(-ds/self.fluid['r']))
     return coeff
 
@@ -74,7 +74,7 @@ class TraversingData:
     return aux.losses(dicti['p'],self.inlet['p'],dicti['p0'], self.inlet['p0'])
   
   def getEntropyIncrease(self, dicti:dict):
-    s = self.fluxes()['i_s']/self.fluxes()['i_m']
+    s = self.fluxes()['I_S']/self.fluxes()['I_M']
     return ((aux.s(dicti['p0'], self.inlet['p0'], self.fluid['r']) - s)/s)*100
   
   def checkTotalTemperature(self, dicti:dict):
@@ -117,7 +117,7 @@ class TraversingData:
   
   def weightedAverage(self, which:str, what:str):
     if which == 'mass':
-      return np.trapz(self.rawData[what]*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.fluxes()['i_m']*self.pitch)
+      return np.trapz(self.rawData[what]*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.fluxes()['I_M']*self.pitch)
     elif which == 'area':
       return np.trapz(self.rawData[what], self.rawData['x'])/self.pitch
     else:
@@ -195,17 +195,17 @@ class TraversingData:
     }
     fluxes = self.fluxes()
 
-    d = fluxes['i_f']**2-4*(1-self.fluid['r']/2/self.fluid['cp'])*(self.inlet['T0']*self.fluid['r']*fluxes['i_m']**2 - self.fluid['r']/2/self.fluid['cp'] * fluxes['i_c']**2)
-    z = (fluxes['i_f']+(-1)**normal*np.sqrt(d))/2/(1-self.fluid['r']/2/self.fluid['cp'])
+    d = fluxes['I_F']**2-4*(1-self.fluid['r']/2/self.fluid['cp'])*(self.inlet['T0']*self.fluid['r']*fluxes['I_M']**2 - self.fluid['r']/2/self.fluid['cp'] * fluxes['I_C']**2)
+    z = (fluxes['I_F']+(-1)**normal*np.sqrt(d))/2/(1-self.fluid['r']/2/self.fluid['cp'])
 
     reduced.update({
-      'p'    : fluxes['i_f']-z,
-      'rho'  : fluxes['i_m']**2/z,
-      'v_y'  : fluxes['i_c']/fluxes['i_m']
+      'p'    : fluxes['I_F']-z,
+      'rho'  : fluxes['I_M']**2/z,
+      'v_y'  : fluxes['I_C']/fluxes['I_M']
     })
 
     reduced['T'] = reduced['p']/reduced['rho']/self.fluid['r']
-    reduced['v_x'] = fluxes['i_m']/reduced['rho']
+    reduced['v_x'] = fluxes['I_M']/reduced['rho']
     reduced.update({
       'alpha':np.arctan2(reduced['v_y'], reduced['v_x']),
       'M':np.sqrt( (2*self.fluid['cp']*(self.inlet['T0']-reduced['T'])) / (self.fluid['gamma']*self.fluid['r']*reduced['T']) ),
@@ -230,16 +230,16 @@ class TraversingData:
     reduced = {
       'method_name' : 'Strictly Conservative',
       'method_abbr' : 'SC',
-      'p0':self.inlet['p0']*np.exp(-1/self.fluid['r']*fluxes['i_s']/fluxes['i_m']),
-      'T' :self.inlet['T0']*fluxes['i_h']/fluxes['i_m'],
-      'alpha':np.arctan2(fluxes['i_c'],fluxes['i_a']),
+      'p0':self.inlet['p0']*np.exp(-1/self.fluid['r']*fluxes['I_S']/fluxes['I_M']),
+      'T' :self.inlet['T0']*fluxes['I_H']/fluxes['I_M'],
+      'alpha':np.arctan2(fluxes['I_C'],fluxes['I_A']),
     }
-    reduced['p']    = reduced['p0']*(fluxes['i_h']/fluxes['i_m'])**(self.fluid['gamma']/(self.fluid['gamma']-1))
+    reduced['p']    = reduced['p0']*(fluxes['I_H']/fluxes['I_M'])**(self.fluid['gamma']/(self.fluid['gamma']-1))
 
     reduced['M']    = aux.ma_is(reduced['p'], reduced['p0'])
-    reduced['v_x']  = fluxes['i_a']/fluxes['i_m']
-    reduced['v_y']  = fluxes['i_c']/fluxes['i_m']
-    reduced['rho']  =  fluxes['i_m']/reduced['v_x']
+    reduced['v_x']  = fluxes['I_A']/fluxes['I_M']
+    reduced['v_y']  = fluxes['I_C']/fluxes['I_M']
+    reduced['rho']  =  fluxes['I_M']/reduced['v_x']
 
     '''reduced['loss_kin'], reduced['loss_tot_dynIn'], reduced['loss_tot_dynOut'], reduced['loss_tot_tot'] = self.getLosses(reduced)
 
@@ -315,7 +315,7 @@ class TraversingData:
     for v in ['v_x','v_y']: 
       reduced[v] = self.weightedAverage('mass', v)
 
-    reduced_h = np.trapz(raw_h*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.fluxes()['i_m']*self.pitch)
+    reduced_h = np.trapz(raw_h*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.fluxes()['I_M']*self.pitch)
     reduced['p0'] = reduced['p'] * (reduced_h/self.fluid['cp']/self.inlet['T0'])**(self.fluid['gamma']/(1-self.fluid['gamma']))
     
     reduced['alpha'] = np.arctan2(reduced['v_y'], reduced['v_x'])
@@ -336,7 +336,7 @@ class TraversingData:
     for v in ['v_x','v_y']: 
       reduced[v] = self.weightedAverage('mass', v)
 
-    reduced['p0'] = np.exp(np.trapz(np.log(self.rawData['p0'])*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.fluxes()['i_m']*self.pitch))
+    reduced['p0'] = np.exp(np.trapz(np.log(self.rawData['p0'])*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.fluxes()['I_M']*self.pitch))
     
     reduced['alpha'] = np.arctan2(reduced['v_y'], reduced['v_x'])
     del reduced['v_x'], reduced['v_y']

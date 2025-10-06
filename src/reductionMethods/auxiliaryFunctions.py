@@ -61,13 +61,13 @@ def fluxesInt(data, p01, t, fluid):
 
   lf = data['v_x']*data['rho']
 
-  f['i_m' ] = np.trapz(flux_mass     (lf                                         ),  data['x'])/t
-  f['i_f' ] = np.trapz(flux_momXP    (lf, data['v_x'],  data['p']                ),  data['x'])/t
-  f['i_a' ] = np.trapz(flux_momX     (lf, data['v_x']                            ),  data['x'])/t
-  f['i_c' ] = np.trapz(flux_momY     (lf, data['v_y']                            ),  data['x'])/t
-  f['i_h' ] = np.trapz(flux_enthalpy (lf, data['p'] , data['p0'] , fluid['gamma']),  data['x'])/t
-  f['i_hT'] = np.trapz(flux_enthalpyT(lf, data['T'] , fluid['cp']                ),  data['x'])/t
-  f['i_s' ] = np.trapz(flux_entropy  (lf, data['p0'], p01        , fluid['r']    ),  data['x'])/t
+  f['I_M' ] = np.trapz(flux_mass     (lf                                         ),  data['x'])/t
+  f['I_F' ] = np.trapz(flux_momXP    (lf, data['v_x'],  data['p']                ),  data['x'])/t
+  f['I_A' ] = np.trapz(flux_momX     (lf, data['v_x']                            ),  data['x'])/t
+  f['I_C' ] = np.trapz(flux_momY     (lf, data['v_y']                            ),  data['x'])/t
+  f['I_H' ] = np.trapz(flux_enthalpy (lf, data['p'] , data['p0'] , fluid['gamma']),  data['x'])/t
+  f['I_HT'] = np.trapz(flux_enthalpyT(lf, data['T'] , fluid['cp']                ),  data['x'])/t
+  f['I_S' ] = np.trapz(flux_entropy  (lf, data['p0'], p01        , fluid['r']    ),  data['x'])/t
 
   return f
 
@@ -76,13 +76,13 @@ def fluxesDisc(values, p01, fluid):
 
   lf = values['v_x']*values['rho']
 
-  f['i_m' ] = flux_mass     (lf)
-  f['i_f' ] = flux_momXP    (lf, values['v_x'],  values['p'] )
-  f['i_a' ] = flux_momX     (lf, values['v_x']      )
-  f['i_c' ] = flux_momY     (lf, values['v_y']      )
-  f['i_h' ] = flux_enthalpy (lf, values['p'] , values['p0'] , fluid['gamma'])
-  f['i_hT'] = flux_enthalpyT(lf, values['T'] ,                fluid['cp']   )
-  f['i_s' ] = flux_entropy  (lf, values['p0'], p01,           fluid['r']    )
+  f['I_M' ] = flux_mass     (lf)
+  f['I_F' ] = flux_momXP    (lf, values['v_x'],  values['p'] )
+  f['I_A' ] = flux_momX     (lf, values['v_x']      )
+  f['I_C' ] = flux_momY     (lf, values['v_y']      )
+  f['I_H' ] = flux_enthalpy (lf, values['p'] , values['p0'] , fluid['gamma'])
+  f['I_HT'] = flux_enthalpyT(lf, values['T'] ,                fluid['cp']   )
+  f['I_S' ] = flux_entropy  (lf, values['p0'], p01,           fluid['r']    )
 
   return f
 
