@@ -17,12 +17,15 @@ Dataset = wd.TraversingData( { 'p' : data[:,1], 'p0' :data[:,0], 'alpha':np.deg2
 
 var2check = 'T'
 print(f'T[0]= {Dataset.rawData[var2check][0] :.3f} +/- {Dataset.data_uncertainties[var2check][0]*2 :.3f} K')
-Dataset.fluxes()
+Dataset.integralFluxes()
 for flux in Dataset.trueFluxesUncertainties.keys():
   print(f'integrated {flux} = {Dataset.trueFluxes[flux] :.3f} +/- {Dataset.trueFluxesUncertainties[flux] :.3f}, uncertainty is {Dataset.trueFluxesUncertainties[flux]/Dataset.trueFluxes[flux]*100 :.3f} %')
 
 for nameReduction in ['massFlux', 'area', 'momentum', 'enthalpy', 'entropy']:
   res = Dataset.reduction_universalAveraging(nameReduction)
   print(res['method_name'])
+  #pprint(res)
   for v in ['p', 'p0', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M']:
     print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.7f}')
+  for fluxName in Dataset.trueFluxes.keys():
+    print(f'   {fluxName} = {res["fluxes"][fluxName] :.3f} +/- {res["fluxesUncertainties"][fluxName] :.7f}')
