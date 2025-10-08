@@ -43,7 +43,7 @@ class TraversingData:
 
     self.rawData['alpha_d'] = np.rad2deg(self.rawData['alpha'])
     self.rawData = self.otherFrom_p_p0_alpha(self.rawData, self.data_uncertainties)
-    #self.rawData['loss_kin'], self.rawData['loss_tot_dynIn'], self.rawData['loss_tot_dynOut'], self.rawData['loss_tot_tot'] = self.getLosses(self.rawData) 
+    self.rawData['loss_kin'], self.rawData['loss_tot_dynIn'], self.rawData['loss_tot_dynOut'], self.rawData['loss_tot_tot'] = self.getLosses(self.rawData) 
 
   def otherFrom_p_p0_alpha(self, dicti:dict, dictiUncertainties:dict):
     for variable in aux.from_p_p0_alpha_T0.keys():
@@ -69,8 +69,23 @@ class TraversingData:
 
       self.trueFluxes = { fluxName : 1/self.pitch*np.trapezoid(aux.fluxesIntegrands[fluxName](self.rawData['p'],self.rawData['p0'],self.rawData['alpha'], self.rawData['T0'], self.rawData['p01'], self.rawData['p1'], self.fluid), self.rawData['x']) for fluxName in aux.fluxesIntegrands.keys()}
       
-      tempLambdas = {fluxName : lambda p, p0, alpha, T0, p01, p1, fluid : 1/self.pitch*np.trapezoid(aux.fluxesIntegrands[fluxName](p, p0, alpha, T0, p01, p1, fluid), self.rawData['x']) for fluxName in aux.fluxesIntegrands.keys()}
-      self.trueFluxesUncertainties = self.computeUncertainties(tempLambdas, self.trueFluxes, self.rawData)
+      self.trueFluxesUncertainties = dict()
+      for variable in aux.fluxesIntegrands.keys(): 
+        localUncs = dict()
+        
+        for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
+          localDicti = { v : self.rawData[v] for v in self.rawData.keys()}
+          if hasattr(self.rawData['p'], '__len__'):
+            localDicti[variable2] = self.rawData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2]
+          else:
+            localDicti[variable2] = self.rawData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2][0]
+  
+          localUncs[variable2] = 1/self.pitch*np.trapezoid(aux.fluxesIntegrands[variable](localDicti['p'], localDicti['p0'], localDicti['alpha'], localDicti['T0'], localDicti['p01'], localDicti['p1'], self.fluid), self.rawData['x']) - self.trueFluxes[variable]
+        
+        if hasattr(self.rawData['p'], '__len__'):
+          self.trueFluxesUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
+        else:
+          self.trueFluxesUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ))     
       
     return self.trueFluxes, self.trueFluxesUncertainties
 
