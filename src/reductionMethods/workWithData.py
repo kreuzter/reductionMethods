@@ -35,6 +35,15 @@ class TraversingData:
       'v_y'  : lambda values : aux.ma_is(values['p'], values['p0'], self.fluid['gamma']) * np.sqrt( self.fluid['gamma'] * self.fluid['r'] * aux.t(aux.ma_is(values['p'], values['p0'], self.fluid['gamma']), values['T0'], self.fluid['gamma'])) * np.sin(values['alpha'])
     }
 
+    self.fluxesIntegrals = {
+      'I_M' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values), self.rawData['x']),
+      'I_A' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)**2 * self.from_p_p0_alpha_T0['rho'](values), self.rawData['x']),
+      'I_F' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)**2 * self.from_p_p0_alpha_T0['rho'](values) + values['p'], self.rawData['x']),
+      'I_C' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values) * self.from_p_p0_alpha_T0['v_y'](values) , self.rawData['x']),
+      'I_H' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values) * (values['p']/values['p0'])**((self.fluid['gamma']-1)/self.fluid['gamma']), self.rawData['x']),
+      'I_S' : lambda values :-1/self.pitch*self.fluid['r']*np.trapezoid((self.from_p_p0_alpha_T0['v_x'](values)*np.log(values['p0']/values['p01'])), self.rawData['x'])
+    }    
+
     self.fluxesIntegrands = {
       'I_M' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values),
       'I_A' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)**2 * self.from_p_p0_alpha_T0['rho'](values),
@@ -85,25 +94,8 @@ class TraversingData:
     if not (hasattr(self, 'trueFluxes')):
       print('Computing fluxes.')
 
-      self.trueFluxes = { fluxName : 1/self.pitch*np.trapezoid(self.fluxesIntegrands[fluxName](self.rawData), self.rawData['x']) for fluxName in self.fluxesIntegrands.keys()}
-      
-      self.trueFluxesUncertainties = dict()
-      for variable in self.fluxesIntegrands.keys(): 
-        localUncs = dict()
-        
-        for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
-          localDicti = { v : self.rawData[v] for v in self.rawData.keys()}
-          if hasattr(self.rawData['p'], '__len__'):
-            localDicti[variable2] = self.rawData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2]
-          else:
-            localDicti[variable2] = self.rawData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2][0]
-  
-          localUncs[variable2] = 1/self.pitch*np.trapezoid(self.fluxesIntegrands[variable](localDicti), self.rawData['x']) - self.trueFluxes[variable]
-        
-        if hasattr(self.rawData['p'], '__len__'):
-          self.trueFluxesUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
-        else:
-          self.trueFluxesUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ))     
+      self.trueFluxes = { fluxName : self.fluxesIntegrals[fluxName](self.rawData) for fluxName in self.fluxesIntegrands.keys()}
+      self.trueFluxesUncertainties = self.computeUncertainties(self.fluxesIntegrals, self.trueFluxes, self.rawData) 
       
     return self.trueFluxes, self.trueFluxesUncertainties
 
@@ -279,8 +271,12 @@ class TraversingData:
     return reduced
 
   @reductionMethod
-  def reduction_vzlu(self, additionalParameter):
-    fluxes, _ = self.integralFluxes()
+  def reduction_vzlu(self, additionalParameter = None):
+    
+    lambdas = {
+      'p0' : lambda values : values['p0']*np.exp(-1/self.fluid['r']*np.trapezoid(self.fluxesIntegrands['I_S'](values), self.rawData['x'])/np.trapezoid(self.fluxesIntegrands['I_M'](values), self.rawData['x']))
+    }
+
 
     reduced = {
       'method_name' : 'Strictly Conservative',
@@ -295,13 +291,6 @@ class TraversingData:
     reduced['v_x']  = fluxes['I_A']/fluxes['I_M']
     reduced['v_y']  = fluxes['I_C']/fluxes['I_M']
     reduced['rho']  =  fluxes['I_M']/reduced['v_x']
-
-    '''reduced['loss_kin'], reduced['loss_tot_dynIn'], reduced['loss_tot_dynOut'], reduced['loss_tot_tot'] = self.getLosses(reduced)
-
-    reduced['fluxes'] = self.getFluxes(reduced)
-    reduced['entropy_increase'] = self.getEntropyIncrease(reduced)
-    reduced['EOSsatisfied'] = self.checkEOS(reduced)
-    reduced['T0Satisfied'] = self.checkTotalTemperature(reduced)'''
 
     return reduced
 
