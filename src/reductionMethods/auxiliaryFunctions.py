@@ -28,8 +28,6 @@ from_p_p0_alpha_T0 = {
   'v_y'  : lambda p, p0, alpha, T0, fluid : ma_is(p, p0, fluid['gamma']) * np.sqrt( fluid['gamma'] * fluid['r'] * t(ma_is(p, p0, fluid['gamma']), T0, fluid['gamma'])) * np.sin(alpha)
 }
 
-
-
 def losses(p_out, p_in, p0_out, p0_in, gamma=1.4):
   return [loss(p_out, p_in, p0_out, p0_in, gamma) for loss in [kineticEnergyLossCoefficient, 
                                                                totalPressureLossCoefficient_dynIn, 

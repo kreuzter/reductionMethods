@@ -2,6 +2,8 @@
 import sys
 import numpy as np
 
+from pprint import pprint
+
 import matplotlib.pyplot as plt
 from reductionMethods import workWithData as wd
 from reductionMethods import auxiliaryFunctions as aux
@@ -19,8 +21,8 @@ Dataset.fluxes()
 for flux in Dataset.trueFluxesUncertainties.keys():
   print(f'integrated {flux} = {Dataset.trueFluxes[flux] :.3f} +/- {Dataset.trueFluxesUncertainties[flux] :.3f}, uncertainty is {Dataset.trueFluxesUncertainties[flux]/Dataset.trueFluxes[flux]*100 :.3f} %')
 
-for nameReduction,reduction in zip(['mass weighted averaging', 'area weighted averaging'],[Dataset.reduction_massFluxDirect, Dataset.reduction_areaDirect]):
-  res = reduction()
-  print(nameReduction)
+for nameReduction in ['massFlux', 'area', 'momentum', 'enthalpy', 'entropy']:
+  res = Dataset.reduction_universalAveraging(nameReduction)
+  print(res['method_name'])
   for v in ['p', 'p0', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M']:
-    print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.3f}')
+    print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.7f}')

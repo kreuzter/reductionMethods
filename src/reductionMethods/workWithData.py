@@ -24,6 +24,7 @@ class TraversingData:
     self.inlet   = inlet
 
     self.pitch = self.rawData['x'].max()-self.rawData['x'].min()
+    self.averagingFunctions = self.functionsForAveraging()
 
     self.prepro()
   
@@ -130,22 +131,13 @@ class TraversingData:
     
     return dicti
 
-  def reductionMethod(func):
-    def wrapper(self):
-      result = func(self)
+  def reductionMethod(func, additionalParameter = None):
+    def wrapper(self, additionalParameter):
+      result = func(self, additionalParameter)
       result = self.getAdditionalProperties(result)
       return result
     return wrapper
 
-  def averaging(func):
-    def wrapper(self):
-      result = func(self)
-      result['T0'] = self.inlet['T0']
-      result['uncertainties']['T0'] = self.data_uncertainties['T0'][0]
-      result = self.otherFrom_p_p0_alpha(result, result['uncertainties'])
-      return result
-    return wrapper
-  
   def weightedAverage(self, which:str, what:str):
     if which == 'mass':
       return np.trapz(self.rawData[what]*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.fluxes()['I_M']*self.pitch)
@@ -218,6 +210,7 @@ class TraversingData:
     
     return fig, ax
   
+  @reductionMethod
   def reduction_momentumMethod(self, normal = True):
 
     reduced = {
@@ -242,20 +235,11 @@ class TraversingData:
       'M':np.sqrt( (2*self.fluid['cp']*(self.inlet['T0']-reduced['T'])) / (self.fluid['gamma']*self.fluid['r']*reduced['T']) ),
     })
     p_over_p0 = aux.p(reduced['M'])
-    reduced['p0'] = reduced['p']/p_over_p0 
-
-    reduced['loss_kin'], reduced['loss_tot_dynIn'], reduced['loss_tot_dynOut'], reduced['loss_tot_tot'] = self.getLosses(reduced)
-
-    reduced['fluxes'] = self.getFluxes(reduced)
-    reduced['entropy_increase'] = self.getEntropyIncrease(reduced)
-
-    reduced['EOSsatisfied'] = self.checkEOS(reduced)
-    reduced['T0Satisfied'] = self.checkTotalTemperature(reduced)
-    
+    reduced['p0'] = reduced['p']/p_over_p0     
     return reduced
 
   @reductionMethod
-  def reduction_vzlu(self):
+  def reduction_vzlu(self, additionalParameter):
     fluxes = self.fluxes()
 
     reduced = {
@@ -281,137 +265,100 @@ class TraversingData:
 
     return reduced
 
-  @reductionMethod
-  @averaging
-  def reduction_areaDirect(self):
-    reduced = {
-      'method_name' : 'Area Weighted Averaging',
-      'method_abbr' : r'$A$',
-    }
-
-    reduced['uncertainties'] = {v:self.dictiUncertainties_p_p0_alpha_T0[v][0] for v in self.dictiUncertainties_p_p0_alpha_T0.keys()}
-
-    for v in ['p','p0','alpha']: 
-      reduced[v] = self.weightedAverage('area', v)
-
-    return reduced
-
   def weighted(self, how, values, p, p0, alpha, T0, p01, fluid):
-    if how == 'massFlux':
+    assert how in ['mass', 'massFlux', 'area']
+    if how == 'massFlux' or how == 'mass':
       return np.trapezoid(values*aux.fluxesIntegrands['I_M'](p, p0, alpha, T0, p01, fluid), self.rawData['x'] ) / np.trapezoid(aux.fluxesIntegrands['I_M'](p, p0, alpha, T0, p01, fluid), self.rawData['x'] )
     elif how == 'area':
       return np.trapezoid( values, self.rawData['x'] )/self.pitch
-  
+    
   angleAsArctanOfFluxes = lambda self, p, p0, alpha, T0, p01, fluid: np.arctan( np.trapezoid(aux.fluxesIntegrands['I_C'](p, p0, alpha, T0, p01, fluid), self.rawData['x'] )/np.trapezoid(aux.fluxesIntegrands['I_A'](p, p0, alpha, T0, p01, fluid), self.rawData['x'] ) )
-  
+
+  def textInfoAboutAveraging(self, method):
+    match method:
+      case 'massFlux':
+        return {
+                 'method_name' : 'Mass Flux Weighted Averaging',
+                 'method_abbr' : r'$\dot{m}$',
+                }
+      case 'area':
+        return {
+                  'method_name' : 'Area Weighted Averaging',
+                  'method_abbr' : r'$A$',
+                }
+      case 'momentum':
+        return {
+                  'method_name' : 'Momentum Weighted Averaging',
+                  'method_abbr' : 'MOM',
+                }
+      case 'enthalpy':
+        return {
+                  'method_name' : 'Enthalpy Weighted Averaging',
+                  'method_abbr' : r'$h$',
+                }
+      case 'entropy':
+        return {
+                  'method_name' : 'Entropy Weighted Averaging',
+                  'method_abbr' : r'$s$',
+                }
+
   def functionsForAveraging(self):
-    dicti = { how : {
-      'p'     : lambda p, p0, alpha, T0, p01, fluid: self.weighted(how,     p, p, p0, alpha, T0, p01, fluid),
-      'p0'    : lambda p, p0, alpha, T0, p01, fluid: self.weighted(how,    p0, p, p0, alpha, T0, p01, fluid),
-      'alpha' : lambda p, p0, alpha, T0, p01, fluid: self.weighted(how, alpha, p, p0, alpha, T0, p01, fluid),
-    } for how in ['massFlux', 'area'] }
+    dicti = { 'area' : {
+      'p'     : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',     p, p, p0, alpha, T0, p01, fluid),
+      'p0'    : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',    p0, p, p0, alpha, T0, p01, fluid),
+      'alpha' : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area', alpha, p, p0, alpha, T0, p01, fluid),
+      'T0'    : lambda p, p0, alpha, T0, p01, fluid: T0[0]
+    } }
+    
+    dicti['massFlux'] = {
+      'p'     : lambda p, p0, alpha, T0, p01, fluid: self.weighted('massFlux',     p, p, p0, alpha, T0, p01, fluid),
+      'p0'    : lambda p, p0, alpha, T0, p01, fluid: self.weighted('massFlux',    p0, p, p0, alpha, T0, p01, fluid),
+      'alpha' : lambda p, p0, alpha, T0, p01, fluid: self.weighted('massFlux', alpha, p, p0, alpha, T0, p01, fluid),
+      'T0'    : lambda p, p0, alpha, T0, p01, fluid: T0[0]
+    }
 
     dicti['momentum'] = {
       'p'     : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',  p, p, p0, alpha, T0, p01, fluid),
-      'p0'    : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',  p, p, p0, alpha, T0, p01, fluid)*(1-1/T0*(self.weighted('mass', aux.from_p_p0_alpha_T0['v_mag'](p, p0, alpha, T0, fluid), p, p0, alpha, T0, p01, fluid))/2/fluid['cp'])**(fluid['gamma']/(1-fluid['gamma'])),
-      'alpha' : lambda p, p0, alpha, T0, p01, fluid: self.angleAsArctanOfFluxes(p, p0, alpha, T0, p01, fluid)
+      'p0'    : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',  p, p, p0, alpha, T0, p01, fluid)*(1-(fluid['gamma']-1)*self.weighted('massFlux', aux.from_p_p0_alpha_T0['v_mag'](p, p0, alpha, T0, fluid), p, p0, alpha, T0, p01, fluid)**2/(2*fluid['gamma']*fluid['r']*T0[0]))**(fluid['gamma']/(1-fluid['gamma'])),
+      'alpha' : lambda p, p0, alpha, T0, p01, fluid: self.angleAsArctanOfFluxes(p, p0, alpha, T0, p01, fluid),
+      'T0'    : lambda p, p0, alpha, T0, p01, fluid: T0[0]
     }
+
+    dicti['enthalpy'] = {
+      'p'     : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',  p, p, p0, alpha, T0, p01, fluid),
+      'p0'    : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',  p, p, p0, alpha, T0, p01, fluid)*((self.weighted('massFlux', aux.from_p_p0_alpha_T0['T'](p, p0, alpha, T0, fluid), p, p0, alpha, T0, p01, fluid))/T0[0])**(fluid['gamma']/(1-fluid['gamma'])),
+      'alpha' : lambda p, p0, alpha, T0, p01, fluid: self.angleAsArctanOfFluxes(p, p0, alpha, T0, p01, fluid),
+      'T0'    : lambda p, p0, alpha, T0, p01, fluid: T0[0]
+    }
+
+    dicti['entropy'] = {
+      'p'     : lambda p, p0, alpha, T0, p01, fluid: self.weighted('area',  p, p, p0, alpha, T0, p01, fluid),
+      'p0'    : lambda p, p0, alpha, T0, p01, fluid: np.exp(self.weighted('massFlux', np.log(p0), p, p0, alpha, T0, p01, fluid)),
+      'alpha' : lambda p, p0, alpha, T0, p01, fluid: self.angleAsArctanOfFluxes(p, p0, alpha, T0, p01, fluid),
+      'T0'    : lambda p, p0, alpha, T0, p01, fluid: T0[0]
+    }
+
     return dicti
 
-  def reduction_universalAveraging():
-    return 1
-
   @reductionMethod
-  @averaging
-  def reduction_massFluxDirect(self):
-    reduced = {
-      'method_name' : 'Mass Flux Weighted Averaging',
-      'method_abbr' : r'$\dot{m}$',
-    }
-
-    for variable in ['p','p0','alpha']: 
-      reduced[variable] = self.weightedAverage('mass', variable)
-
+  def reduction_universalAveraging(self, kind : str ):
+    reduced = { variable : self.averagingFunctions[kind][variable](self.rawData['p'], self.rawData['p0'], self.rawData['alpha'], self.rawData['T0'], self.rawData['p01'], self.fluid) for variable in self.averagingFunctions[kind].keys()}
     reduced['uncertainties'] = dict()
-    for variable in ['p','p0','alpha']: 
+    for variable in self.averagingFunctions[kind].keys(): 
       localUncs = dict()
+      
       for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
         localDicti = { v : self.rawData[v] for v in self.rawData.keys()}
         localDicti[variable2] = self.rawData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2]
-
-        localUncs[variable2] = 1/self.pitch*np.trapezoid( localDicti[variable]*aux.fluxesIntegrands['I_M'](localDicti['p'], localDicti['p0'], localDicti['alpha'], localDicti['T0'], localDicti['p01'], self.fluid), self.rawData['x'] )/self.fluxes()['I_M'] - reduced[variable]
+        
+        localUncs[variable2] = self.averagingFunctions[kind][variable](localDicti['p'], localDicti['p0'], localDicti['alpha'], localDicti['T0'], localDicti['p01'], self.fluid) - reduced[variable]
       
       reduced['uncertainties'][variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ))  
-
+      
+    
+    reduced.update(self.textInfoAboutAveraging(kind))
+    reduced = self.otherFrom_p_p0_alpha(reduced, reduced['uncertainties'])
     return reduced
-
-  @reductionMethod
-  @averaging
-  def reduction_momentum(self):
-    reduced = {
-      'method_name' : 'Momentum Weighted Averaging',
-      'method_abbr' : 'MOM',
-    }
-
-    reduced['p'] = self.weightedAverage('area', 'p')
-    
-    for v in ['v_x','v_y', 'v_mag']: 
-      reduced[v] = self.weightedAverage('mass', v)
-    
-    t = self.inlet['T0'] - reduced['v_mag']**2/2/self.fluid['cp']
-    ma= reduced['v_mag']/np.sqrt(self.fluid['r']*self.fluid['gamma']*t)
-
-    p2p0 = aux.p(ma, 1, self.fluid['gamma'])
-
-    reduced['p0'] = reduced['p']/p2p0
-
-    reduced['alpha'] = np.arctan2(reduced['v_y'], reduced['v_x'])
-    del reduced['v_x'], reduced['v_y'], reduced['v_mag']
-
-    return reduced
-  
-  @reductionMethod
-  @averaging
-  def reduction_enthalpy(self):
-    reduced = {
-      'method_name' : 'Enthalpy Weighted Averaging',
-      'method_abbr' : r'$h$',
-    }
-
-    reduced['p'] = self.weightedAverage('area', 'p')
-    raw_h = self.fluid['cp']*self.inlet['T0']*(self.rawData['p']/self.rawData['p0'])**((self.fluid['gamma']-1)/self.fluid['gamma'])
-
-    for v in ['v_x','v_y']: 
-      reduced[v] = self.weightedAverage('mass', v)
-
-    reduced_h = np.trapz(raw_h*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.fluxes()['I_M']*self.pitch)
-    reduced['p0'] = reduced['p'] * (reduced_h/self.fluid['cp']/self.inlet['T0'])**(self.fluid['gamma']/(1-self.fluid['gamma']))
-    
-    reduced['alpha'] = np.arctan2(reduced['v_y'], reduced['v_x'])
-    del reduced['v_x'], reduced['v_y']
-
-    return reduced
-
-  @reductionMethod
-  @averaging
-  def reduction_entropy(self):
-    reduced = {
-      'method_name' : 'Entropy Weighted Averaging',
-      'method_abbr' : r'$s$',
-    }
-
-    reduced['p'] = self.weightedAverage('area', 'p')
-
-    for v in ['v_x','v_y']: 
-      reduced[v] = self.weightedAverage('mass', v)
-
-    reduced['p0'] = np.exp(np.trapz(np.log(self.rawData['p0'])*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.fluxes()['I_M']*self.pitch))
-    
-    reduced['alpha'] = np.arctan2(reduced['v_y'], reduced['v_x'])
-    del reduced['v_x'], reduced['v_y']
-    
-    return reduced
-
 
 if __name__ == "__main__":
   print('I do nothing, I am just a storage of functions.')
