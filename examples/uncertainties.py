@@ -27,7 +27,28 @@ for nameReduction in ['massFlux', 'area', 'momentum', 'enthalpy', 'entropy']:
   print(res['method_name'])
   #pprint(res)
   for v in ['p', 'p0', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M']:
-    print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.7f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
+    print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.3f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
   print()  
   for fluxName in Dataset.trueFluxes.keys():
-    print(f'   {fluxName} = {res["fluxes"][fluxName] :.3f} +/- {res["fluxesUncertainties"][fluxName] :.7f}, uncertainty is {res["fluxesUncertainties"][fluxName]/res["fluxes"][fluxName] *100 :.3f} %')
+    print(f'   {fluxName} = {res["fluxes"][fluxName] :.3f} +/- {res["fluxesUncertainties"][fluxName] :.3f}, uncertainty is {res["fluxesUncertainties"][fluxName]/res["fluxes"][fluxName] *100 :.3f} %')
+
+res = Dataset.reduction_vzlu(None)
+print()
+print(res['method_name'])
+#pprint(res)
+for v in ['p', 'p0', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M']:
+  print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.3f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
+print()  
+for fluxName in Dataset.trueFluxes.keys():
+  print(f'   {fluxName} = {res["fluxes"][fluxName] :.3f} +/- {res["fluxesUncertainties"][fluxName] :.3f}, uncertainty is {res["fluxesUncertainties"][fluxName]/res["fluxes"][fluxName] *100 :.3f} %')
+
+
+res = Dataset.reduction_momentumMethod(True)
+print()
+print(res['method_name'])
+#pprint(res)
+for v in ['p', 'p0', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M']:
+  print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.3f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
+print()  
+for fluxName in Dataset.trueFluxes.keys():
+  print(f'   {fluxName} = {res["fluxes"][fluxName] :.3f} +/- {res["fluxesUncertainties"][fluxName] :.3f}, uncertainty is {res["fluxesUncertainties"][fluxName]/res["fluxes"][fluxName] *100 :.3f} %')

@@ -249,49 +249,66 @@ class TraversingData:
       'method_name' : 'Momentum Method',
       'method_abbr' : 'MM'
     }
-    fluxes, _ = self.integralFluxes()
+    lambdas = dict()
+    lambdas['d'] = lambda values : self.fluxesIntegrals['I_F'](values)**2-4*(1-self.fluid['r']/2/self.fluid['cp'])*(values['T0'][0]*self.fluid['r']*self.fluxesIntegrals['I_M'](values)**2 - self.fluid['r']/2/self.fluid['cp'] * self.fluxesIntegrals['I_C'](values)**2)
+    lambdas['z'] = lambda values: (self.fluxesIntegrals['I_F'](values)+(-1)**normal*np.sqrt(lambdas['d'](values)))/2/(1-self.fluid['r']/2/self.fluid['cp'])
 
-    d = fluxes['I_F']**2-4*(1-self.fluid['r']/2/self.fluid['cp'])*(self.inlet['T0']*self.fluid['r']*fluxes['I_M']**2 - self.fluid['r']/2/self.fluid['cp'] * fluxes['I_C']**2)
-    z = (fluxes['I_F']+(-1)**normal*np.sqrt(d))/2/(1-self.fluid['r']/2/self.fluid['cp'])
-
-    reduced.update({
-      'p'    : fluxes['I_F']-z,
-      'rho'  : fluxes['I_M']**2/z,
-      'v_y'  : fluxes['I_C']/fluxes['I_M']
+    lambdas.update({
+      'p'    : lambda values : self.fluxesIntegrals['I_F'](values)-lambdas['z'](values),
+      'rho'  : lambda values : self.fluxesIntegrals['I_M'](values)**2/lambdas['z'](values),
+      'v_y'  : lambda values : self.fluxesIntegrals['I_C'](values)/self.fluxesIntegrals['I_M'](values),
+      'T0'    : lambda values: values['T0'][0],
+      'p01'   : lambda values: values['p01'][0],
+      'p1'    : lambda values: values['p1'][0]
     })
 
-    reduced['T'] = reduced['p']/reduced['rho']/self.fluid['r']
-    reduced['v_x'] = fluxes['I_M']/reduced['rho']
-    reduced.update({
-      'alpha':np.arctan2(reduced['v_y'], reduced['v_x']),
-      'M':np.sqrt( (2*self.fluid['cp']*(self.inlet['T0']-reduced['T'])) / (self.fluid['gamma']*self.fluid['r']*reduced['T']) ),
+    lambdas['T']   = lambda values : lambdas['p'](values)/lambdas['rho'](values)/self.fluid['r']
+    lambdas['v_x'] = lambda values : self.fluxesIntegrals['I_M'](values)/lambdas['rho'](values)
+    
+    lambdas.update({
+      'alpha': lambda values : np.arctan2(lambdas['v_y'](values), lambdas['v_x'](values)),
+      'M':     lambda values : np.sqrt( (2*self.fluid['cp']*(values['T0'][0]-lambdas['T'](values))) / (self.fluid['gamma']*self.fluid['r']*lambdas['T'](values)) ),
     })
-    p_over_p0 = aux.p(reduced['M'])
-    reduced['p0'] = reduced['p']/p_over_p0     
+    lambdas['p_over_p0'] = lambda values: aux.p(lambdas['M'](values))
+    lambdas['p0'] = lambda values: lambdas['p'](values)/lambdas['p_over_p0'](values)    
+
+    reduced.update({ variable : lambdas[variable](self.rawData) for variable in lambdas.keys()})
+
+    reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
+
+    reduced['fluxes'], reduced['fluxesUncertainties'] = self.getFluxes(reduced)
+    reduced = self.otherFrom_p_p0_alpha(reduced, reduced['uncertainties'])    
+
     return reduced
 
   @reductionMethod
   def reduction_vzlu(self, additionalParameter = None):
     
     lambdas = {
-      'p0' : lambda values : values['p0']*np.exp(-1/self.fluid['r']*np.trapezoid(self.fluxesIntegrands['I_S'](values), self.rawData['x'])/np.trapezoid(self.fluxesIntegrands['I_M'](values), self.rawData['x']))
+      'p0' :   lambda values : values['p01'][0]*np.exp(-1/self.fluid['r']*self.fluxesIntegrals['I_S'](values)/self.fluxesIntegrals['I_M'](values)),
+      'T'  :   lambda values : values['T0'][0]*self.fluxesIntegrals['I_H'](values)/self.fluxesIntegrals['I_M'](values),
+      'alpha': lambda values : self.angleAsArctanOfFluxes(values),
+      'T0'    : lambda values: values['T0'][0],
+      'p01'   : lambda values: values['p01'][0],
+      'p1'    : lambda values: values['p1'][0]
     }
-
+    lambdas['p'] = lambda values : lambdas['p0'](values)*(self.fluxesIntegrals['I_H'](values)/self.fluxesIntegrals['I_M'](values))**(self.fluid['gamma']/(self.fluid['gamma']-1))
+    lambdas['M'] = lambda values : aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma'])
+    lambdas['v_x']  = lambda values: self.fluxesIntegrals['I_A'](values)/self.fluxesIntegrals['I_M'](values)
+    lambdas['v_y']  = lambda values: self.fluxesIntegrals['I_C'](values)/self.fluxesIntegrals['I_M'](values)
+    lambdas['rho']  = lambda values: self.fluxesIntegrals['I_M'](values)/lambdas['v_x'](values)
 
     reduced = {
       'method_name' : 'Strictly Conservative',
-      'method_abbr' : 'SC',
-      'p0':self.inlet['p0']*np.exp(-1/self.fluid['r']*fluxes['I_S']/fluxes['I_M']),
-      'T' :self.inlet['T0']*fluxes['I_H']/fluxes['I_M'],
-      'alpha':np.arctan2(fluxes['I_C'],fluxes['I_A']),
+      'method_abbr' : 'SC'
     }
-    reduced['p']    = reduced['p0']*(fluxes['I_H']/fluxes['I_M'])**(self.fluid['gamma']/(self.fluid['gamma']-1))
 
-    reduced['M']    = aux.ma_is(reduced['p'], reduced['p0'])
-    reduced['v_x']  = fluxes['I_A']/fluxes['I_M']
-    reduced['v_y']  = fluxes['I_C']/fluxes['I_M']
-    reduced['rho']  =  fluxes['I_M']/reduced['v_x']
+    reduced.update({ variable : lambdas[variable](self.rawData) for variable in lambdas.keys()})
 
+    reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
+
+    reduced['fluxes'], reduced['fluxesUncertainties'] = self.getFluxes(reduced)
+    reduced = self.otherFrom_p_p0_alpha(reduced, reduced['uncertainties'])
     return reduced
 
   def weighted(self, how, what, values):
@@ -302,7 +319,7 @@ class TraversingData:
       return np.trapezoid(what, self.rawData['x'] )/self.pitch
   
   def angleAsArctanOfFluxes(self, values): 
-    return np.arctan( np.trapezoid(self.fluxesIntegrands['I_C'](values), self.rawData['x'] )/np.trapezoid(self.fluxesIntegrands['I_A'](values), self.rawData['x'] ) )
+    return np.arctan( self.fluxesIntegrals['I_C'](values)/self.fluxesIntegrals['I_A'](values) )
 
   def textInfoAboutAveraging(self, method):
     match method:
@@ -318,17 +335,17 @@ class TraversingData:
                 }
       case 'momentum':
         return {
-                  'method_name' : 'Momentum Weighted Averaging',
+                  'method_name' : 'Momentum Averaging',
                   'method_abbr' : 'MOM',
                 }
       case 'enthalpy':
         return {
-                  'method_name' : 'Enthalpy Weighted Averaging',
+                  'method_name' : 'Enthalpy Averaging',
                   'method_abbr' : r'$h$',
                 }
       case 'entropy':
         return {
-                  'method_name' : 'Entropy Weighted Averaging',
+                  'method_name' : 'Entropy Averaging',
                   'method_abbr' : r'$s$',
                 }
 
