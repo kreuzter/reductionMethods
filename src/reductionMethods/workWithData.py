@@ -26,6 +26,24 @@ class TraversingData:
     self.pitch = self.rawData['x'].max()-self.rawData['x'].min()
     self.averagingFunctions = self.functionsForAveraging()
 
+    self.from_p_p0_alpha_T0 = {
+      'M'    : lambda values : aux.ma_is(values['p'], values['p0'], self.fluid['gamma']),
+      'T'    : lambda values : aux.t(aux.ma_is(values['p'], values['p0'], self.fluid['gamma']), values['T0'], self.fluid['gamma']),
+      'rho'  : lambda values : aux.rho(aux.ma_is(values['p'], values['p0'], self.fluid['gamma']), values['p0']/values['T0']/self.fluid['r'], self.fluid['gamma']),
+      'v_mag': lambda values : aux.ma_is(values['p'], values['p0'], self.fluid['gamma']) * np.sqrt( self.fluid['gamma'] * self.fluid['r'] * aux.t(aux.ma_is(values['p'], values['p0'], self.fluid['gamma']), values['T0'], self.fluid['gamma'])), 
+      'v_x'  : lambda values : aux.ma_is(values['p'], values['p0'], self.fluid['gamma']) * np.sqrt( self.fluid['gamma'] * self.fluid['r'] * aux.t(aux.ma_is(values['p'], values['p0'], self.fluid['gamma']), values['T0'], self.fluid['gamma'])) * np.cos(values['alpha']),
+      'v_y'  : lambda values : aux.ma_is(values['p'], values['p0'], self.fluid['gamma']) * np.sqrt( self.fluid['gamma'] * self.fluid['r'] * aux.t(aux.ma_is(values['p'], values['p0'], self.fluid['gamma']), values['T0'], self.fluid['gamma'])) * np.sin(values['alpha'])
+    }
+
+    self.fluxesIntegrands = {
+      'I_M' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values),
+      'I_A' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)**2 * self.from_p_p0_alpha_T0['rho'](values),
+      'I_F' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)**2 * self.from_p_p0_alpha_T0['rho'](values) + values['p'],
+      'I_C' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values) * self.from_p_p0_alpha_T0['v_y'](values) ,
+      'I_H' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values) * (values['p']/values['p0'])**((self.fluid['gamma']-1)/self.fluid['gamma']),
+      'I_S' : lambda values : -self.fluid['r']*(self.from_p_p0_alpha_T0['v_x'](values)*np.log(values['p0']/values['p01'])),
+    }    
+
     self.prepro()
   
   def reduceByAll(self, mm = True):
@@ -46,15 +64,15 @@ class TraversingData:
     #self.rawData['loss_kin'], self.rawData['loss_tot_dynIn'], self.rawData['loss_tot_dynOut'], self.rawData['loss_tot_tot'] = self.getLosses(self.rawData) 
 
   def otherFrom_p_p0_alpha(self, dicti:dict, dictiUncertainties:dict):
-    for variable in aux.from_p_p0_alpha_T0.keys():
+    for variable in self.from_p_p0_alpha_T0.keys():
 
-      dicti[variable] = aux.from_p_p0_alpha_T0[variable](dicti, self.fluid)
+      dicti[variable] = self.from_p_p0_alpha_T0[variable](dicti)
 
       localUncs = dict()
       for variable2 in dictiUncertainties.keys():
         localDicti = { v : dicti[v] for v in dicti.keys()}
         localDicti[variable2] = dicti[variable2] + dictiUncertainties[variable2]
-        localUncs[variable2] = aux.from_p_p0_alpha_T0[variable](localDicti,self.fluid)-dicti[variable]
+        localUncs[variable2] = self.from_p_p0_alpha_T0[variable](localDicti)-dicti[variable]
 
       try: 
         dictiUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
@@ -67,10 +85,10 @@ class TraversingData:
     if not (hasattr(self, 'trueFluxes')):
       print('Computing fluxes.')
 
-      self.trueFluxes = { fluxName : 1/self.pitch*np.trapezoid(aux.fluxesIntegrands[fluxName](self.rawData, self.fluid), self.rawData['x']) for fluxName in aux.fluxesIntegrands.keys()}
+      self.trueFluxes = { fluxName : 1/self.pitch*np.trapezoid(self.fluxesIntegrands[fluxName](self.rawData), self.rawData['x']) for fluxName in self.fluxesIntegrands.keys()}
       
       self.trueFluxesUncertainties = dict()
-      for variable in aux.fluxesIntegrands.keys(): 
+      for variable in self.fluxesIntegrands.keys(): 
         localUncs = dict()
         
         for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
@@ -80,7 +98,7 @@ class TraversingData:
           else:
             localDicti[variable2] = self.rawData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2][0]
   
-          localUncs[variable2] = 1/self.pitch*np.trapezoid(aux.fluxesIntegrands[variable](localDicti, self.fluid), self.rawData['x']) - self.trueFluxes[variable]
+          localUncs[variable2] = 1/self.pitch*np.trapezoid(self.fluxesIntegrands[variable](localDicti), self.rawData['x']) - self.trueFluxes[variable]
         
         if hasattr(self.rawData['p'], '__len__'):
           self.trueFluxesUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
@@ -134,8 +152,8 @@ class TraversingData:
     return satisfied, t0-self.inlet['T0']
   
   def getFluxes(self, dicti:dict):
-    fluxes = { fluxName : aux.fluxesIntegrands[fluxName](dicti, self.fluid) for fluxName in aux.fluxesIntegrands.keys()}
-    fluxesUncertainties = self.computeUncertainties(aux.fluxesIntegrands, fluxes, dicti)
+    fluxes = { fluxName : self.fluxesIntegrands[fluxName](dicti) for fluxName in self.fluxesIntegrands.keys()}
+    fluxesUncertainties = self.computeUncertainties(self.fluxesIntegrands, fluxes, dicti)
     return fluxes, fluxesUncertainties
   
   def getAdditionalProperties(self, dicti:dict):
@@ -290,12 +308,12 @@ class TraversingData:
   def weighted(self, how, what, values):
     assert how in ['mass', 'massFlux', 'area']
     if how == 'massFlux' or how == 'mass':
-      return np.trapezoid(what*aux.fluxesIntegrands['I_M'](values, self.fluid), self.rawData['x'] ) / np.trapezoid(aux.fluxesIntegrands['I_M'](values, self.fluid), self.rawData['x'] )
+      return np.trapezoid(what*self.fluxesIntegrands['I_M'](values), self.rawData['x'] ) / np.trapezoid(self.fluxesIntegrands['I_M'](values), self.rawData['x'] )
     elif how == 'area':
       return np.trapezoid(what, self.rawData['x'] )/self.pitch
   
   def angleAsArctanOfFluxes(self, values): 
-    return np.arctan( np.trapezoid(aux.fluxesIntegrands['I_C'](values, self.fluid), self.rawData['x'] )/np.trapezoid(aux.fluxesIntegrands['I_A'](values, self.fluid), self.rawData['x'] ) )
+    return np.arctan( np.trapezoid(self.fluxesIntegrands['I_C'](values), self.rawData['x'] )/np.trapezoid(self.fluxesIntegrands['I_A'](values), self.rawData['x'] ) )
 
   def textInfoAboutAveraging(self, method):
     match method:
@@ -327,55 +345,55 @@ class TraversingData:
 
   def functionsForAveraging(self):
     dicti = { 'area' : {
-      'p'     : lambda values, fluid: self.weighted('area',     values['p'], values),
-      'p0'    : lambda values, fluid: self.weighted('area',    values['p0'], values),
-      'alpha' : lambda values, fluid: self.weighted('area', values['alpha'], values),
-      'T0'    : lambda values, fluid: values['T0'][0],
-      'p01'   : lambda values, fluid: values['p01'][0],
-      'p1'    : lambda values, fluid: values['p1'][0]
+      'p'     : lambda values: self.weighted('area',     values['p'], values),
+      'p0'    : lambda values: self.weighted('area',    values['p0'], values),
+      'alpha' : lambda values: self.weighted('area', values['alpha'], values),
+      'T0'    : lambda values: values['T0'][0],
+      'p01'   : lambda values: values['p01'][0],
+      'p1'    : lambda values: values['p1'][0]
     } }
     
     dicti['massFlux'] = {
-      'p'     : lambda values, fluid: self.weighted('massFlux',     values['p'], values),
-      'p0'    : lambda values, fluid: self.weighted('massFlux',    values['p0'], values),
-      'alpha' : lambda values, fluid: self.weighted('massFlux', values['alpha'], values),
-      'T0'    : lambda values, fluid: values['T0'][0],
-      'p01'   : lambda values, fluid: values['p01'][0],
-      'p1'    : lambda values, fluid: values['p1'][0]
+      'p'     : lambda values: self.weighted('massFlux',     values['p'], values),
+      'p0'    : lambda values: self.weighted('massFlux',    values['p0'], values),
+      'alpha' : lambda values: self.weighted('massFlux', values['alpha'], values),
+      'T0'    : lambda values: values['T0'][0],
+      'p01'   : lambda values: values['p01'][0],
+      'p1'    : lambda values: values['p1'][0]
     }
 
     dicti['momentum'] = {
-      'p'     : lambda values, fluid: self.weighted('area',     values['p'], values),
-      'p0'    : lambda values, fluid: self.weighted('area',     values['p'], values)*(1-(fluid['gamma']-1)*self.weighted('massFlux', aux.from_p_p0_alpha_T0['v_mag'](values, fluid), values)**2/(2*fluid['gamma']*fluid['r']*values['T0'][0]))**(fluid['gamma']/(1-fluid['gamma'])),
-      'alpha' : lambda values, fluid: self.angleAsArctanOfFluxes(values),
-      'T0'    : lambda values, fluid: values['T0'][0],
-      'p01'   : lambda values, fluid: values['p01'][0],
-      'p1'    : lambda values, fluid: values['p1'][0]
+      'p'     : lambda values: self.weighted('area', values['p'], values),
+      'p0'    : lambda values: self.weighted('area', values['p'], values)*(1-(self.fluid['gamma']-1)*self.weighted('massFlux', self.from_p_p0_alpha_T0['v_mag'](values), values)**2/(2*self.fluid['gamma']*self.fluid['r']*values['T0'][0]))**(self.fluid['gamma']/(1-self.fluid['gamma'])),
+      'alpha' : lambda values: self.angleAsArctanOfFluxes(values),
+      'T0'    : lambda values: values['T0'][0],
+      'p01'   : lambda values: values['p01'][0],
+      'p1'    : lambda values: values['p1'][0]
     }
 
     dicti['enthalpy'] = {
-      'p'     : lambda values, fluid: self.weighted('area',     values['p'], values),
-      'p0'    : lambda values, fluid: self.weighted('area',     values['p'], values)*((self.weighted('massFlux', aux.from_p_p0_alpha_T0['T'](values, fluid), values))/values['T0'][0])**(fluid['gamma']/(1-fluid['gamma'])),
-      'alpha' : lambda values, fluid: self.angleAsArctanOfFluxes(values),
-      'T0'    : lambda values, fluid: values['T0'][0],
-      'p01'   : lambda values, fluid: values['p01'][0],
-      'p1'    : lambda values, fluid: values['p1'][0]
+      'p'     : lambda values: self.weighted('area',     values['p'], values),
+      'p0'    : lambda values: self.weighted('area',     values['p'], values)*((self.weighted('massFlux', self.from_p_p0_alpha_T0['T'](values), values))/values['T0'][0])**(self.fluid['gamma']/(1-self.fluid['gamma'])),
+      'alpha' : lambda values: self.angleAsArctanOfFluxes(values),
+      'T0'    : lambda values: values['T0'][0],
+      'p01'   : lambda values: values['p01'][0],
+      'p1'    : lambda values: values['p1'][0]
     }
 
     dicti['entropy'] = {
-      'p'     : lambda values, fluid: self.weighted('area',     values['p'], values),
-      'p0'    : lambda values, fluid: np.exp(self.weighted('massFlux', np.log(values['p0']), values)),
-      'alpha' : lambda values, fluid: self.angleAsArctanOfFluxes(values),
-      'T0'    : lambda values, fluid: values['T0'][0],
-      'p01'   : lambda values, fluid: values['p01'][0],
-      'p1'    : lambda values, fluid: values['p1'][0]
+      'p'     : lambda values: self.weighted('area',     values['p'], values),
+      'p0'    : lambda values: np.exp(self.weighted('massFlux', np.log(values['p0']), values)),
+      'alpha' : lambda values: self.angleAsArctanOfFluxes(values),
+      'T0'    : lambda values: values['T0'][0],
+      'p01'   : lambda values: values['p01'][0],
+      'p1'    : lambda values: values['p1'][0]
     }
 
     return dicti
 
   @reductionMethod
   def reduction_universalAveraging(self, kind : str ):
-    reduced = { variable : self.averagingFunctions[kind][variable](self.rawData, self.fluid) for variable in self.averagingFunctions[kind].keys()}
+    reduced = { variable : self.averagingFunctions[kind][variable](self.rawData) for variable in self.averagingFunctions[kind].keys()}
     reduced['uncertainties'] = self.computeUncertainties(self.averagingFunctions[kind], reduced, self.rawData)
     
     reduced.update(self.textInfoAboutAveraging(kind))
@@ -395,7 +413,7 @@ class TraversingData:
         else:
           localDicti[variable2] = dictionaryOfData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2][0]
 
-        localUncs[variable2] = dictionaryOfLambdas[variable](localDicti, self.fluid) - dictionaryOfResults[variable]
+        localUncs[variable2] = dictionaryOfLambdas[variable](localDicti) - dictionaryOfResults[variable]
       
       if hasattr(dictionaryOfData['p'], '__len__'):
         res[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  

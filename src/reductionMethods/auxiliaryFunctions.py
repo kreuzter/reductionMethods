@@ -19,15 +19,6 @@ def rho(ma, rho0=1, gamma = 1.4):
 s = lambda p0, p01, r : -r*np.log(p0/p01)
 rho_id = lambda p, t, r : p/r/t
 
-from_p_p0_alpha_T0 = {
-  'M'    : lambda values, fluid : ma_is(values['p'], values['p0'], fluid['gamma']),
-  'T'    : lambda values, fluid : t(ma_is(values['p'], values['p0'], fluid['gamma']), values['T0'], fluid['gamma']),
-  'rho'  : lambda values, fluid : rho(ma_is(values['p'], values['p0'], fluid['gamma']), values['p0']/values['T0']/fluid['r'], fluid['gamma']),
-  'v_mag': lambda values, fluid : ma_is(values['p'], values['p0'], fluid['gamma']) * np.sqrt( fluid['gamma'] * fluid['r'] * t(ma_is(values['p'], values['p0'], fluid['gamma']), values['T0'], fluid['gamma'])), # np.sqrt(2*fluid['gamma']*fluid['r']*variables['T0']/(fluid['gamma']-1)*(1-(p/p0)**((fluid['gamma']-1)/fluid['gamma']))),  #
-  'v_x'  : lambda values, fluid : ma_is(values['p'], values['p0'], fluid['gamma']) * np.sqrt( fluid['gamma'] * fluid['r'] * t(ma_is(values['p'], values['p0'], fluid['gamma']), values['T0'], fluid['gamma'])) * np.cos(values['alpha']),
-  'v_y'  : lambda values, fluid : ma_is(values['p'], values['p0'], fluid['gamma']) * np.sqrt( fluid['gamma'] * fluid['r'] * t(ma_is(values['p'], values['p0'], fluid['gamma']), values['T0'], fluid['gamma'])) * np.sin(values['alpha'])
-}
-
 exponLosses = lambda gamma: (gamma-1)/gamma
 losses = {
   'kineticEnergyLossCoefficient' :        lambda p_out, p_in, p0_out, p0_in, gamma : 1- (1-(p_out/p0_out)**exponLosses(gamma))/(1-(p_out/p0_in)**exponLosses(gamma)),
@@ -48,15 +39,6 @@ def totalPressureLossCoefficient_dynOut(p_out, p_in, p0_out, p0_in, gamma=1.4):
 
 def totalPressureLossCoefficient_totIn(p_out, p_in, p0_out, p0_in, gamma=1.4):
   return (p0_in-p0_out)/(p0_in)
-
-fluxesIntegrands = {
-  'I_M' : lambda values, fluid : from_p_p0_alpha_T0['v_x'](values, fluid)    * from_p_p0_alpha_T0['rho'](values, fluid),
-  'I_A' : lambda values, fluid : from_p_p0_alpha_T0['v_x'](values, fluid)**2 * from_p_p0_alpha_T0['rho'](values, fluid),
-  'I_F' : lambda values, fluid : from_p_p0_alpha_T0['v_x'](values, fluid)**2 * from_p_p0_alpha_T0['rho'](values, fluid) + values['p'],
-  'I_C' : lambda values, fluid : from_p_p0_alpha_T0['v_x'](values, fluid)    * from_p_p0_alpha_T0['rho'](values, fluid) * from_p_p0_alpha_T0['v_y'](values, fluid) ,
-  'I_H' : lambda values, fluid : from_p_p0_alpha_T0['v_x'](values, fluid)    * from_p_p0_alpha_T0['rho'](values, fluid) * (values['p']/values['p0'])**((fluid['gamma']-1)/fluid['gamma']),
-  'I_S' : lambda values, fluid : -fluid['r']*(from_p_p0_alpha_T0['v_x'](values, fluid)*np.log(values['p0']/values['p01'])           ),
-}
 
 normalize = lambda y: (y-y.min())/(y.max()-y.min())
 
