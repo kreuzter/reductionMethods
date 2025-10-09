@@ -54,8 +54,7 @@ class TraversingData:
     self.rawDataUncertainties = { v : np.ones_like(self.rawData['p'])*uncertainties[v] for v in uncertainties.keys()}
     self.rawData = self.otherVariables_fromMeasured(self.rawData, self.rawDataUncertainties)
     
-    self.pitch = self.rawData['x'].max()-self.rawData['x'].min()
-    self.averagingFunctions = self.functionsForAveraging()   
+    self.pitch = self.rawData['x'].max()-self.rawData['x'].min() 
 
   def reduceByAll(self, mm = True):
     toRet = {}
@@ -121,23 +120,7 @@ class TraversingData:
   
   def getEntropyIncrease(self, dicti:dict):
     s = self.integralFluxes()[0]['I_S']/self.integralFluxes()[0]['I_M']
-    print(s)
     return ((aux.s(dicti['p0'], self.inlet['p0'], self.fluid['r']) - s)/s)*100
-
-  def reductionMethod(func, additionalParameter = None):
-    def wrapper(self, additionalParameter):
-      result = func(self, additionalParameter)
-      #result = self.getAdditionalProperties(result)
-      return result
-    return wrapper
-
-  def weightedAverage(self, which:str, what:str):
-    if which == 'mass':
-      return np.trapz(self.rawData[what]*self.rawData['v_x']*self.rawData['rho'], self.rawData['x'])/(self.integralFluxes()[0]['I_M']*self.pitch)
-    elif which == 'area':
-      return np.trapz(self.rawData[what], self.rawData['x'])/self.pitch
-    else:
-      NotImplementedError
     
   def plotRawData(self, vars, figsize = (12,6), ylabels = None, figax = None, legenPrepend = '_', legendkwargs = {}, cycLinestyle=['-', '--', ':', '-.'],
                   rcParams_user = {}):
@@ -202,11 +185,36 @@ class TraversingData:
     fig.tight_layout()
     
     return fig, ax
+
+  def reductionMethod(func):
+    def wrapper(self, *args, **kwargs):
+      reduced, metadata = func(self, *args, **kwargs)
+      reduced.update(metadata)
+      reduced['fluxes'], reduced['fluxesUncertainties'] = self.meanFluxes(reduced)
+      return reduced
+    return wrapper
   
+  def averagingMethod(func):
+    def wrapper(self, *args, **kwargs):
+      lambdas, metadata = func(self)
+      lambdas.update({
+        'T0'    : lambda values: values['T0'][0],
+        'p01'   : lambda values: values['p01'][0],
+        'p1'    : lambda values: values['p1'][0]
+      })
+      
+      reduced = { variable : lambdas[variable](self.rawData) for variable in lambdas.keys()}
+      reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
+      reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])
+            
+      return reduced, metadata
+
+    return wrapper
+
   @reductionMethod
   def reduction_momentumMethod(self, normal = True):
 
-    reduced = {
+    metadata = {
       'method_name' : 'Momentum Method',
       'method_abbr' : 'MM'
     }
@@ -225,6 +233,7 @@ class TraversingData:
 
     lambdas['T']   = lambda values : lambdas['p'](values)/lambdas['rho'](values)/self.fluid['r']
     lambdas['v_x'] = lambda values : self.fluxesIntegrals['I_M'](values)/lambdas['rho'](values)
+    lambdas['v_mag'] = lambda values : (lambdas['v_x'](values)**2 + lambdas['v_y'](values)**2)
     
     lambdas.update({
       'alpha': lambda values : np.arctan2(lambdas['v_y'](values), lambdas['v_x'](values)),
@@ -233,17 +242,13 @@ class TraversingData:
     lambdas['p_over_p0'] = lambda values: aux.p(lambdas['M'](values))
     lambdas['p0'] = lambda values: lambdas['p'](values)/lambdas['p_over_p0'](values)    
 
-    reduced.update({ variable : lambdas[variable](self.rawData) for variable in lambdas.keys()})
-
+    reduced= { variable : lambdas[variable](self.rawData) for variable in lambdas.keys()}
     reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
 
-    reduced['fluxes'], reduced['fluxesUncertainties'] = self.meanFluxes(reduced)
-    reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])    
-
-    return reduced
+    return reduced, metadata
 
   @reductionMethod
-  def reduction_vzlu(self, additionalParameter = None):
+  def reduction_strictlyConservative(self):
     
     lambdas = {
       'p0' :   lambda values : values['p01'][0]*np.exp(-1/self.fluid['r']*self.fluxesIntegrals['I_S'](values)/self.fluxesIntegrals['I_M'](values)),
@@ -259,18 +264,87 @@ class TraversingData:
     lambdas['v_y']  = lambda values: self.fluxesIntegrals['I_C'](values)/self.fluxesIntegrals['I_M'](values)
     lambdas['rho']  = lambda values: self.fluxesIntegrals['I_M'](values)/lambdas['v_x'](values)
 
-    reduced = {
+    metadata = {
       'method_name' : 'Strictly Conservative',
       'method_abbr' : 'SC'
     }
 
-    reduced.update({ variable : lambdas[variable](self.rawData) for variable in lambdas.keys()})
+    reduced = { variable : lambdas[variable](self.rawData) for variable in lambdas.keys()}
 
     reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
 
-    reduced['fluxes'], reduced['fluxesUncertainties'] = self.meanFluxes(reduced)
-    reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])
-    return reduced
+    return reduced, metadata
+
+  @reductionMethod
+  @averagingMethod
+  def reduction_areaWeightedAveraging(self):
+    lambdas = {
+      'p'     : lambda values: self.weighted('area',     values['p'], values),
+      'p0'    : lambda values: self.weighted('area',    values['p0'], values),
+      'alpha' : lambda values: self.weighted('area', values['alpha'], values)
+    } 
+    metadata = {
+                  'method_name' : 'Area Weighted Averaging',
+                  'method_abbr' : r'$A$',
+    }
+    return lambdas, metadata
+  
+  @reductionMethod
+  @averagingMethod
+  def reduction_massFluxWeightedAveraging(self):
+    lambdas = {
+      'p'     : lambda values: self.weighted('massFlux',     values['p'], values),
+      'p0'    : lambda values: self.weighted('massFlux',    values['p0'], values),
+      'alpha' : lambda values: self.weighted('massFlux', values['alpha'], values)
+    }
+    metadata = {
+                 'method_name' : 'Mass Flux Weighted Averaging',
+                 'method_abbr' : r'$\dot{m}$',
+    }
+    return lambdas, metadata
+   
+  @reductionMethod
+  @averagingMethod
+  def reduction_momentumAveraging(self):
+    lambdas = {
+      'p'     : lambda values: self.weighted('area', values['p'], values),
+      'p0'    : lambda values: self.weighted('area', values['p'], values)*(1-(self.fluid['gamma']-1)*self.weighted('massFlux', self.measuredVariables['v_mag'](values), values)**2/(2*self.fluid['gamma']*self.fluid['r']*values['T0'][0]))**(self.fluid['gamma']/(1-self.fluid['gamma'])),
+      'alpha' : lambda values: self.angleAsArctanOfFluxes(values)
+    }
+    metadata = {
+                  'method_name' : 'Momentum Averaging',
+                  'method_abbr' : 'MOM',
+    }
+    return lambdas, metadata
+   
+  @reductionMethod
+  @averagingMethod
+  def reduction_enthalpyAveraging(self):
+    lambdas = {
+      'p'     : lambda values: self.weighted('area',     values['p'], values),
+      'p0'    : lambda values: self.weighted('area',     values['p'], values)*((self.weighted('massFlux', self.measuredVariables['T'](values), values))/values['T0'][0])**(self.fluid['gamma']/(1-self.fluid['gamma'])),
+      'alpha' : lambda values: self.angleAsArctanOfFluxes(values)
+    }
+    metadata = {
+                  'method_name' : 'Enthalpy Averaging',
+                  'method_abbr' : r'$h$',
+    }
+    return lambdas, metadata
+   
+  @reductionMethod
+  @averagingMethod
+  def reduction_entropyAveraging(self):
+    lambdas = {
+      'p'     : lambda values: self.weighted('area',     values['p'], values),
+      'p0'    : lambda values: np.exp(self.weighted('massFlux', np.log(values['p0']), values)),
+      'alpha' : lambda values: self.angleAsArctanOfFluxes(values)
+    }
+    metadata = {
+                  'method_name' : 'Entropy Averaging',
+                  'method_abbr' : r'$s$',
+    }
+    return lambdas, metadata
+ 
 
   def weighted(self, how, what, values):
     assert how in ['mass', 'massFlux', 'area']
@@ -280,93 +354,7 @@ class TraversingData:
       return np.trapezoid(what, self.rawData['x'] )/self.pitch
   
   def angleAsArctanOfFluxes(self, values): 
-    return np.arctan( self.fluxesIntegrals['I_C'](values)/self.fluxesIntegrals['I_A'](values) )
-
-  def textInfoAboutAveraging(self, method):
-    match method:
-      case 'massFlux':
-        return {
-                 'method_name' : 'Mass Flux Weighted Averaging',
-                 'method_abbr' : r'$\dot{m}$',
-                }
-      case 'area':
-        return {
-                  'method_name' : 'Area Weighted Averaging',
-                  'method_abbr' : r'$A$',
-                }
-      case 'momentum':
-        return {
-                  'method_name' : 'Momentum Averaging',
-                  'method_abbr' : 'MOM',
-                }
-      case 'enthalpy':
-        return {
-                  'method_name' : 'Enthalpy Averaging',
-                  'method_abbr' : r'$h$',
-                }
-      case 'entropy':
-        return {
-                  'method_name' : 'Entropy Averaging',
-                  'method_abbr' : r'$s$',
-                }
-
-  def functionsForAveraging(self):
-    dicti = { 'area' : {
-      'p'     : lambda values: self.weighted('area',     values['p'], values),
-      'p0'    : lambda values: self.weighted('area',    values['p0'], values),
-      'alpha' : lambda values: self.weighted('area', values['alpha'], values),
-      'T0'    : lambda values: values['T0'][0],
-      'p01'   : lambda values: values['p01'][0],
-      'p1'    : lambda values: values['p1'][0]
-    } }
-    
-    dicti['massFlux'] = {
-      'p'     : lambda values: self.weighted('massFlux',     values['p'], values),
-      'p0'    : lambda values: self.weighted('massFlux',    values['p0'], values),
-      'alpha' : lambda values: self.weighted('massFlux', values['alpha'], values),
-      'T0'    : lambda values: values['T0'][0],
-      'p01'   : lambda values: values['p01'][0],
-      'p1'    : lambda values: values['p1'][0]
-    }
-
-    dicti['momentum'] = {
-      'p'     : lambda values: self.weighted('area', values['p'], values),
-      'p0'    : lambda values: self.weighted('area', values['p'], values)*(1-(self.fluid['gamma']-1)*self.weighted('massFlux', self.measuredVariables['v_mag'](values), values)**2/(2*self.fluid['gamma']*self.fluid['r']*values['T0'][0]))**(self.fluid['gamma']/(1-self.fluid['gamma'])),
-      'alpha' : lambda values: self.angleAsArctanOfFluxes(values),
-      'T0'    : lambda values: values['T0'][0],
-      'p01'   : lambda values: values['p01'][0],
-      'p1'    : lambda values: values['p1'][0]
-    }
-
-    dicti['enthalpy'] = {
-      'p'     : lambda values: self.weighted('area',     values['p'], values),
-      'p0'    : lambda values: self.weighted('area',     values['p'], values)*((self.weighted('massFlux', self.measuredVariables['T'](values), values))/values['T0'][0])**(self.fluid['gamma']/(1-self.fluid['gamma'])),
-      'alpha' : lambda values: self.angleAsArctanOfFluxes(values),
-      'T0'    : lambda values: values['T0'][0],
-      'p01'   : lambda values: values['p01'][0],
-      'p1'    : lambda values: values['p1'][0]
-    }
-
-    dicti['entropy'] = {
-      'p'     : lambda values: self.weighted('area',     values['p'], values),
-      'p0'    : lambda values: np.exp(self.weighted('massFlux', np.log(values['p0']), values)),
-      'alpha' : lambda values: self.angleAsArctanOfFluxes(values),
-      'T0'    : lambda values: values['T0'][0],
-      'p01'   : lambda values: values['p01'][0],
-      'p1'    : lambda values: values['p1'][0]
-    }
-
-    return dicti
-
-  @reductionMethod
-  def reduction_universalAveraging(self, kind : str ):
-    reduced = { variable : self.averagingFunctions[kind][variable](self.rawData) for variable in self.averagingFunctions[kind].keys()}
-    reduced['uncertainties'] = self.computeUncertainties(self.averagingFunctions[kind], reduced, self.rawData)
-    
-    reduced.update(self.textInfoAboutAveraging(kind))
-    reduced['fluxes'], reduced['fluxesUncertainties'] = self.meanFluxes(reduced)
-    reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])
-    return reduced
+    return np.arctan( self.fluxesIntegrals['I_C'](values)/self.fluxesIntegrals['I_A'](values) )  
 
   def computeUncertainties(self, dictionaryOfLambdas : dict, dictionaryOfResults : dict, dictionaryOfData : dict):
     res = dict()
