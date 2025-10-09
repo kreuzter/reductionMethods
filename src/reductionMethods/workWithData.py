@@ -15,18 +15,9 @@ class TraversingData:
     if 'cp' not in self.fluid.keys(): self.fluid['cp'] = self.fluid['gamma']*self.fluid['r']/(self.fluid['gamma']-1)
 
     self.rawData = data
-    self.rawData['T0'] = np.ones_like(data['p'])*inlet['T0']
-    self.rawData['p01']= np.ones_like(data['p'])*inlet['p0']
-    self.rawData['p1'] = np.ones_like(data['p'])*inlet['p' ]
-
-    self.data_uncertainties = { v : np.ones_like(self.rawData['p'])*uncertainties[v] for v in uncertainties.keys()}
-    self.dictiUncertainties_p_p0_alpha_T0 = {v:self.data_uncertainties[v] for v in ['p', 'p0', 'alpha', 'T0']}
     self.inlet   = inlet
 
-    self.pitch = self.rawData['x'].max()-self.rawData['x'].min()
-    self.averagingFunctions = self.functionsForAveraging()
-
-    self.from_p_p0_alpha_T0 = {
+    self.measuredVariables = {
       'M'    : lambda values : aux.ma_is(values['p'], values['p0'], self.fluid['gamma']),
       'T'    : lambda values : aux.t(aux.ma_is(values['p'], values['p0'], self.fluid['gamma']), values['T0'], self.fluid['gamma']),
       'rho'  : lambda values : aux.rho(aux.ma_is(values['p'], values['p0'], self.fluid['gamma']), values['p0']/values['T0']/self.fluid['r'], self.fluid['gamma']),
@@ -35,26 +26,37 @@ class TraversingData:
       'v_y'  : lambda values : aux.ma_is(values['p'], values['p0'], self.fluid['gamma']) * np.sqrt( self.fluid['gamma'] * self.fluid['r'] * aux.t(aux.ma_is(values['p'], values['p0'], self.fluid['gamma']), values['T0'], self.fluid['gamma'])) * np.sin(values['alpha'])
     }
 
-    self.fluxesIntegrals = {
-      'I_M' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values), self.rawData['x']),
-      'I_A' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)**2 * self.from_p_p0_alpha_T0['rho'](values), self.rawData['x']),
-      'I_F' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)**2 * self.from_p_p0_alpha_T0['rho'](values) + values['p'], self.rawData['x']),
-      'I_C' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values) * self.from_p_p0_alpha_T0['v_y'](values) , self.rawData['x']),
-      'I_H' : lambda values : 1/self.pitch*                np.trapezoid(self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values) * (values['p']/values['p0'])**((self.fluid['gamma']-1)/self.fluid['gamma']), self.rawData['x']),
-      'I_S' : lambda values :-1/self.pitch*self.fluid['r']*np.trapezoid((self.from_p_p0_alpha_T0['v_x'](values)*np.log(values['p0']/values['p01'])), self.rawData['x'])
-    }    
-
     self.fluxesIntegrands = {
-      'I_M' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values),
-      'I_A' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)**2 * self.from_p_p0_alpha_T0['rho'](values),
-      'I_F' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)**2 * self.from_p_p0_alpha_T0['rho'](values) + values['p'],
-      'I_C' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values) * self.from_p_p0_alpha_T0['v_y'](values) ,
-      'I_H' : lambda values : self.from_p_p0_alpha_T0['v_x'](values)    * self.from_p_p0_alpha_T0['rho'](values) * (values['p']/values['p0'])**((self.fluid['gamma']-1)/self.fluid['gamma']),
-      'I_S' : lambda values : -self.fluid['r']*(self.from_p_p0_alpha_T0['v_x'](values)*np.log(values['p0']/values['p01'])),
-    }    
+      'I_M' : lambda values : self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values),
+      'I_A' : lambda values : self.measuredVariables['v_x'](values)**2 * self.measuredVariables['rho'](values),
+      'I_F' : lambda values : self.measuredVariables['v_x'](values)**2 * self.measuredVariables['rho'](values) + values['p'],
+      'I_C' : lambda values : self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values) * self.measuredVariables['v_y'](values) ,
+      'I_H' : lambda values : self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values) * (values['p']/values['p0'])**((self.fluid['gamma']-1)/self.fluid['gamma']),
+      'I_S' : lambda values : -self.fluid['r']*(self.measuredVariables['v_x'](values)*np.log(values['p0']/values['p01'])),
+    }
+     
+    self.fluxesIntegrals = { 
+      'I_M' : lambda values : 1/self.pitch*np.trapezoid(self.fluxesIntegrands['I_M'](values), self.rawData['x']),
+      'I_A' : lambda values : 1/self.pitch*np.trapezoid(self.fluxesIntegrands['I_A'](values), self.rawData['x']),
+      'I_F' : lambda values : 1/self.pitch*np.trapezoid(self.fluxesIntegrands['I_F'](values), self.rawData['x']),
+      'I_C' : lambda values : 1/self.pitch*np.trapezoid(self.fluxesIntegrands['I_C'](values), self.rawData['x']),
+      'I_H' : lambda values : 1/self.pitch*np.trapezoid(self.fluxesIntegrands['I_H'](values), self.rawData['x']),
+      'I_S' : lambda values : 1/self.pitch*np.trapezoid(self.fluxesIntegrands['I_S'](values), self.rawData['x'])
+    }   
 
-    self.prepro()
-  
+    self.rawData['T0'] = np.ones_like(data['p'])*inlet['T0']
+    self.rawData['p01']= np.ones_like(data['p'])*inlet['p0']
+    self.rawData['p1'] = np.ones_like(data['p'])*inlet['p' ]
+
+    self.rawData['alpha_d'] = np.rad2deg(self.rawData['alpha'])
+
+    self.givenUncertainties = uncertainties
+    self.rawDataUncertainties = { v : np.ones_like(self.rawData['p'])*uncertainties[v] for v in uncertainties.keys()}
+    self.rawData = self.otherVariables_fromMeasured(self.rawData, self.rawDataUncertainties)
+    
+    self.pitch = self.rawData['x'].max()-self.rawData['x'].min()
+    self.averagingFunctions = self.functionsForAveraging()   
+
   def reduceByAll(self, mm = True):
     toRet = {}
     for name in dir(self):
@@ -65,28 +67,10 @@ class TraversingData:
         toRet[name] = m
     return toRet   
 
-  def prepro(self):
-    """Preprocess traversing data."""
-
-    self.rawData['alpha_d'] = np.rad2deg(self.rawData['alpha'])
-    self.rawData = self.otherFrom_p_p0_alpha(self.rawData, self.data_uncertainties)
-    #self.rawData['loss_kin'], self.rawData['loss_tot_dynIn'], self.rawData['loss_tot_dynOut'], self.rawData['loss_tot_tot'] = self.getLosses(self.rawData) 
-
-  def otherFrom_p_p0_alpha(self, dicti:dict, dictiUncertainties:dict):
-    for variable in self.from_p_p0_alpha_T0.keys():
-
-      dicti[variable] = self.from_p_p0_alpha_T0[variable](dicti)
-
-      localUncs = dict()
-      for variable2 in dictiUncertainties.keys():
-        localDicti = { v : dicti[v] for v in dicti.keys()}
-        localDicti[variable2] = dicti[variable2] + dictiUncertainties[variable2]
-        localUncs[variable2] = self.from_p_p0_alpha_T0[variable](localDicti)-dicti[variable]
-
-      try: 
-        dictiUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
-      except:
-        dictiUncertainties[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ))  
+  def otherVariables_fromMeasured(self, dicti:dict, dictiUncertainties:dict):
+    
+    dicti.update({ variable : self.measuredVariables[variable](dicti) for variable in self.measuredVariables.keys()})
+    dictiUncertainties.update(self.computeUncertainties(self.measuredVariables, dicti, dicti))
     
     return dicti
 
@@ -125,9 +109,9 @@ class TraversingData:
       losses[lossName] = aux.losses[lossName](dicti['p'], dicti['p1'],dicti['p0'], dicti['p01'], self.fluid['gamma'])
 
       localUncs = dict()
-      for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
+      for variable2 in self.rawDataUncertainties.keys():
         localDicti = { v : dicti[v] for v in dicti.keys()}
-        localDicti[variable2] = dicti[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2][0]
+        localDicti[variable2] = dicti[variable2] + self.rawDataUncertainties[variable2][0]
         localUncs[variable2] = aux.lossesIntegrands[lossName](localDicti['p'],localDicti['p0'],localDicti['alpha'], localDicti['T0'], localDicti['p01'], self.fluid) -losses[lossName]
 
       lossesUncertainties[lossName] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
@@ -155,12 +139,6 @@ class TraversingData:
     dicti['EOSsatisfied'] = self.checkEOS(dicti)
     dicti['T0Satisfied'] = self.checkTotalTemperature(dicti)
 
-    return dicti
-
-  def getReducedFrom_p_p0_alpha(self, dicti:dict):
-    dicti = self.otherFrom_p_p0_alpha(dicti)
-    dicti = self.getAdditionalProperties(dicti)
-    
     return dicti
 
   def reductionMethod(func, additionalParameter = None):
@@ -277,7 +255,7 @@ class TraversingData:
     reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
 
     reduced['fluxes'], reduced['fluxesUncertainties'] = self.getFluxes(reduced)
-    reduced = self.otherFrom_p_p0_alpha(reduced, reduced['uncertainties'])    
+    reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])    
 
     return reduced
 
@@ -308,7 +286,7 @@ class TraversingData:
     reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
 
     reduced['fluxes'], reduced['fluxesUncertainties'] = self.getFluxes(reduced)
-    reduced = self.otherFrom_p_p0_alpha(reduced, reduced['uncertainties'])
+    reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])
     return reduced
 
   def weighted(self, how, what, values):
@@ -370,7 +348,7 @@ class TraversingData:
 
     dicti['momentum'] = {
       'p'     : lambda values: self.weighted('area', values['p'], values),
-      'p0'    : lambda values: self.weighted('area', values['p'], values)*(1-(self.fluid['gamma']-1)*self.weighted('massFlux', self.from_p_p0_alpha_T0['v_mag'](values), values)**2/(2*self.fluid['gamma']*self.fluid['r']*values['T0'][0]))**(self.fluid['gamma']/(1-self.fluid['gamma'])),
+      'p0'    : lambda values: self.weighted('area', values['p'], values)*(1-(self.fluid['gamma']-1)*self.weighted('massFlux', self.measuredVariables['v_mag'](values), values)**2/(2*self.fluid['gamma']*self.fluid['r']*values['T0'][0]))**(self.fluid['gamma']/(1-self.fluid['gamma'])),
       'alpha' : lambda values: self.angleAsArctanOfFluxes(values),
       'T0'    : lambda values: values['T0'][0],
       'p01'   : lambda values: values['p01'][0],
@@ -379,7 +357,7 @@ class TraversingData:
 
     dicti['enthalpy'] = {
       'p'     : lambda values: self.weighted('area',     values['p'], values),
-      'p0'    : lambda values: self.weighted('area',     values['p'], values)*((self.weighted('massFlux', self.from_p_p0_alpha_T0['T'](values), values))/values['T0'][0])**(self.fluid['gamma']/(1-self.fluid['gamma'])),
+      'p0'    : lambda values: self.weighted('area',     values['p'], values)*((self.weighted('massFlux', self.measuredVariables['T'](values), values))/values['T0'][0])**(self.fluid['gamma']/(1-self.fluid['gamma'])),
       'alpha' : lambda values: self.angleAsArctanOfFluxes(values),
       'T0'    : lambda values: values['T0'][0],
       'p01'   : lambda values: values['p01'][0],
@@ -404,27 +382,29 @@ class TraversingData:
     
     reduced.update(self.textInfoAboutAveraging(kind))
     reduced['fluxes'], reduced['fluxesUncertainties'] = self.getFluxes(reduced)
-    reduced = self.otherFrom_p_p0_alpha(reduced, reduced['uncertainties'])
+    reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])
     return reduced
+
 
   def computeUncertainties(self, dictionaryOfLambdas : dict, dictionaryOfResults : dict, dictionaryOfData : dict):
     res = dict()
     for variable in dictionaryOfLambdas.keys(): 
-      localUncs = dict()
+      try: 
+        size = len(dictionaryOfResults['p'])
+      except: 
+        try:
+          size = len(dictionaryOfResults['I_M'])
+        except: 
+          size = 1
+      localUncs = np.empty((len(self.givenUncertainties), size))
       
-      for variable2 in self.dictiUncertainties_p_p0_alpha_T0.keys():
+      for index,variable2 in enumerate(self.givenUncertainties.keys()):
         localDicti = { v : dictionaryOfData[v] for v in dictionaryOfData.keys()}
-        if hasattr(dictionaryOfData['p'], '__len__'):
-          localDicti[variable2] = dictionaryOfData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2]
-        else:
-          localDicti[variable2] = dictionaryOfData[variable2] + self.dictiUncertainties_p_p0_alpha_T0[variable2][0]
+        localDicti[variable2] = dictionaryOfData[variable2] + self.givenUncertainties[variable2]
 
-        localUncs[variable2] = dictionaryOfLambdas[variable](localDicti) - dictionaryOfResults[variable]
-      
-      if hasattr(dictionaryOfData['p'], '__len__'):
-        res[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
-      else:
-        res[variable] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ))         
+        localUncs[index, :] = dictionaryOfLambdas[variable](localDicti) - dictionaryOfResults[variable]
+      res[variable] = np.linalg.norm(localUncs, axis=0)
+      if len(res[variable]) == 1: res[variable] = res[variable][0]
 
     return res
 
