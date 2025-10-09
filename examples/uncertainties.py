@@ -8,11 +8,11 @@ import matplotlib.pyplot as plt
 from reductionMethods import workWithData as wd
 from reductionMethods import auxiliaryFunctions as aux
 
-data = np.loadtxt('data/trw2_a1-1.1_p1-92210_p01-96061.csv', delimiter=';', skiprows=1)
+data = np.loadtxt('/media/kreuzter/volume/PhD/reductionMethods/examples/data/trw2_a1-1.709_p1-92099_p01-96091.csv', delimiter=';', skiprows=1)
 t0 = data[0,-1]/aux.t(aux.ma_is(data[0,1], data[0,0]))
 
 Dataset = wd.TraversingData( { 'p' : data[:,1], 'p0' :data[:,0], 'alpha':np.deg2rad(data[:,2]), 'x':np.linspace(0,1,len(data[:,0]))}, 
-                            inlet={'p':63671., 'p0':97672., 'T0':t0}, 
+                            inlet={'p':92099., 'p0':96091., 'T0':t0}, 
                             uncertainties={'p':50., 'p0':50., 'alpha':np.deg2rad(0.6), 'p01':17.} 
                             )
 var2check = 'T'
@@ -22,34 +22,24 @@ Dataset.integralFluxes()
 for flux in Dataset.trueFluxesUncertainties.keys():
   print(f'integrated {flux} = {Dataset.trueFluxes[flux] :.3f} +/- {Dataset.trueFluxesUncertainties[flux] :.3f}, uncertainty is {Dataset.trueFluxesUncertainties[flux]/Dataset.trueFluxes[flux]*100 :.3f} %')
 
-for nameReduction in ['massFlux', 'area', 'momentum', 'enthalpy', 'entropy']:
-  res = Dataset.reduction_universalAveraging(nameReduction)
+def printResult(res):
+  
   print()
   print(res['method_name'])
   #pprint(res)
-  for v in ['p', 'p0', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M']:
+  for v in ['p0']: # , 'p', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M'
     print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.3f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
-  print()  
-  for fluxName in Dataset.trueFluxes.keys():
-    print(f'   {fluxName} = {res["fluxes"][fluxName] :.3f} +/- {res["fluxesUncertainties"][fluxName] :.3f}, uncertainty is {res["fluxesUncertainties"][fluxName]/res["fluxes"][fluxName] *100 :.3f} %')
+  #print()  
+  #for fluxName in Dataset.trueFluxes.keys():
+  #  print(f'   {fluxName} = {res["fluxes"][fluxName] :.3f} +/- {res["fluxesUncertainties"][fluxName] :.3f}, uncertainty is {res["fluxesUncertainties"][fluxName]/res["fluxes"][fluxName] *100 :.3f} %')
 
+
+for nameReduction in ['massFlux', 'area', 'momentum', 'enthalpy', 'entropy']:
+  res = Dataset.reduction_universalAveraging(nameReduction)
+  printResult(res)
 res = Dataset.reduction_vzlu(None)
-print()
-print(res['method_name'])
-
-for v in ['p', 'p0', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M']:
-  print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.3f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
-print()  
-for fluxName in Dataset.trueFluxes.keys():
-  print(f'   {fluxName} = {res["fluxes"][fluxName] :.3f} +/- {res["fluxesUncertainties"][fluxName] :.3f}, uncertainty is {res["fluxesUncertainties"][fluxName]/res["fluxes"][fluxName] *100 :.3f} %')
-
-
+printResult(res)
 res = Dataset.reduction_momentumMethod(True)
-print()
-print(res['method_name'])
-#pprint(res)
-for v in ['p', 'p0', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M']:
-  print(f'   <{v}> = {res[v] :.3f} +/- {res["uncertainties"][v] :.3f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
-print()  
-for fluxName in Dataset.trueFluxes.keys():
-  print(f'   {fluxName} = {res["fluxes"][fluxName] :.3f} +/- {res["fluxesUncertainties"][fluxName] :.3f}, uncertainty is {res["fluxesUncertainties"][fluxName]/res["fluxes"][fluxName] *100 :.3f} %')
+printResult(res)
+
+print(Dataset.getEntropyIncrease(res))

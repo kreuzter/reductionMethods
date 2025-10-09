@@ -10,7 +10,7 @@ class TraversingData:
   Class for representation and manipulation with traversing data.
   """
 
-  def __init__(self, data:dict, inlet:dict, uncertainties = {'p':0., 'p0':0., 'alpha':0.}, fluid = {'r':8314.3/28.96, 'gamma':1.4}):
+  def __init__(self, data:dict, inlet:dict, uncertainties:dict, fluid = {'r':8314.3/28.96, 'gamma':1.4}):
     self.fluid = fluid
     if 'cp' not in self.fluid.keys(): self.fluid['cp'] = self.fluid['gamma']*self.fluid['r']/(self.fluid['gamma']-1)
 
@@ -27,12 +27,12 @@ class TraversingData:
     }
 
     self.fluxesIntegrands = {
-      'I_M' : lambda values : self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values),
-      'I_A' : lambda values : self.measuredVariables['v_x'](values)**2 * self.measuredVariables['rho'](values),
-      'I_F' : lambda values : self.measuredVariables['v_x'](values)**2 * self.measuredVariables['rho'](values) + values['p'],
-      'I_C' : lambda values : self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values) * self.measuredVariables['v_y'](values) ,
-      'I_H' : lambda values : self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values) * (values['p']/values['p0'])**((self.fluid['gamma']-1)/self.fluid['gamma']),
-      'I_S' : lambda values : -self.fluid['r']*(self.measuredVariables['v_x'](values)*np.log(values['p0']/values['p01'])),
+      'I_M' : lambda values :                   self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values),
+      'I_A' : lambda values :                   self.measuredVariables['v_x'](values)**2 * self.measuredVariables['rho'](values),
+      'I_F' : lambda values :                   self.measuredVariables['v_x'](values)**2 * self.measuredVariables['rho'](values) + values['p'],
+      'I_C' : lambda values :                   self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values) * self.measuredVariables['v_y'](values) ,
+      'I_H' : lambda values :                   self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values) * (values['p']/values['p0'])**((self.fluid['gamma']-1)/self.fluid['gamma']),
+      'I_S' : lambda values : -self.fluid['r']*(self.measuredVariables['v_x'](values)    * self.measuredVariables['rho'](values) *np.log(values['p0']/values['p01'])),
     }
      
     self.fluxesIntegrals = { 
@@ -76,12 +76,14 @@ class TraversingData:
 
   def integralFluxes(self):
     if not (hasattr(self, 'trueFluxes')):
-      print('Computing fluxes.')
-
       self.trueFluxes = { fluxName : self.fluxesIntegrals[fluxName](self.rawData) for fluxName in self.fluxesIntegrands.keys()}
-      self.trueFluxesUncertainties = self.computeUncertainties(self.fluxesIntegrals, self.trueFluxes, self.rawData) 
-      
+      self.trueFluxesUncertainties = self.computeUncertainties(self.fluxesIntegrals, self.trueFluxes, self.rawData)       
     return self.trueFluxes, self.trueFluxesUncertainties
+
+  def meanFluxes(self, dicti:dict):
+    fluxes = { fluxName : self.fluxesIntegrands[fluxName](dicti) for fluxName in self.fluxesIntegrands.keys()}
+    fluxesUncertainties = self.computeUncertainties(self.fluxesIntegrands, fluxes, dicti)
+    return fluxes, fluxesUncertainties
 
   def trueTotalPressureLossCoefficient_totIn(self):
     fluxes, _ = self.integralFluxes()
@@ -95,7 +97,7 @@ class TraversingData:
     coeff = self.inlet['p0']/(self.inlet['p0']-self.inlet['p'])*(1 - np.exp(-ds/self.fluid['r']))
     return coeff
 
-  def checkEOS(self, dicti:dict):
+  def checkEoS(self, dicti:dict):
     p = self.fluid['r']*dicti['T']*dicti['rho']
     satisfied = np.isclose(dicti['p'], p, atol=1)
     return satisfied, p-dicti['p']
@@ -119,27 +121,8 @@ class TraversingData:
   
   def getEntropyIncrease(self, dicti:dict):
     s = self.integralFluxes()[0]['I_S']/self.integralFluxes()[0]['I_M']
+    print(s)
     return ((aux.s(dicti['p0'], self.inlet['p0'], self.fluid['r']) - s)/s)*100
-  
-  def checkTotalTemperature(self, dicti:dict):
-    #t0 = dicti['T'] + (dicti['v_x']**2 + dicti['v_y']**2)/2/self.fluid['cp']
-    t0 = dicti['T']/aux.t(dicti['M'], 1, self.fluid['gamma'])
-    satisfied = np.isclose(self.inlet['T0'], t0, atol=0.1)
-    return satisfied, t0-self.inlet['T0']
-  
-  def getFluxes(self, dicti:dict):
-    fluxes = { fluxName : self.fluxesIntegrands[fluxName](dicti) for fluxName in self.fluxesIntegrands.keys()}
-    fluxesUncertainties = self.computeUncertainties(self.fluxesIntegrands, fluxes, dicti)
-    return fluxes, fluxesUncertainties
-  
-  def getAdditionalProperties(self, dicti:dict):
-    dicti['fluxes'], dicti['fluxesUncertainties'] = self.getFluxes(dicti)
-    #dicti['loss_kin'], dicti['loss_tot_dynIn'], dicti['loss_tot_dynOut'], dicti['loss_tot_tot'] = self.getLosses(dicti)
-    dicti['entropy_increase'] = self.getEntropyIncrease(dicti)
-    dicti['EOSsatisfied'] = self.checkEOS(dicti)
-    dicti['T0Satisfied'] = self.checkTotalTemperature(dicti)
-
-    return dicti
 
   def reductionMethod(func, additionalParameter = None):
     def wrapper(self, additionalParameter):
@@ -254,7 +237,7 @@ class TraversingData:
 
     reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
 
-    reduced['fluxes'], reduced['fluxesUncertainties'] = self.getFluxes(reduced)
+    reduced['fluxes'], reduced['fluxesUncertainties'] = self.meanFluxes(reduced)
     reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])    
 
     return reduced
@@ -285,7 +268,7 @@ class TraversingData:
 
     reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
 
-    reduced['fluxes'], reduced['fluxesUncertainties'] = self.getFluxes(reduced)
+    reduced['fluxes'], reduced['fluxesUncertainties'] = self.meanFluxes(reduced)
     reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])
     return reduced
 
@@ -381,10 +364,9 @@ class TraversingData:
     reduced['uncertainties'] = self.computeUncertainties(self.averagingFunctions[kind], reduced, self.rawData)
     
     reduced.update(self.textInfoAboutAveraging(kind))
-    reduced['fluxes'], reduced['fluxesUncertainties'] = self.getFluxes(reduced)
+    reduced['fluxes'], reduced['fluxesUncertainties'] = self.meanFluxes(reduced)
     reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])
     return reduced
-
 
   def computeUncertainties(self, dictionaryOfLambdas : dict, dictionaryOfResults : dict, dictionaryOfData : dict):
     res = dict()
