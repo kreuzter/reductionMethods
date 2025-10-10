@@ -52,7 +52,9 @@ class TraversingData:
 
     self.givenUncertainties = uncertainties
     self.rawDataUncertainties = { v : np.ones_like(self.rawData['p'])*uncertainties[v] for v in uncertainties.keys()}
-    self.rawData = self.otherVariables_fromMeasured(self.rawData, self.rawDataUncertainties)
+
+    self.rawData.update({ variable : self.measuredVariables[variable](self.rawData) for variable in self.measuredVariables.keys()})
+    self.rawDataUncertainties.update(self.computeUncertainties(self.measuredVariables, self.rawData, self.rawData))
     
     self.pitch = self.rawData['x'].max()-self.rawData['x'].min() 
 
@@ -65,13 +67,6 @@ class TraversingData:
         m['alpha_d'] = np.rad2deg(m['alpha'])
         toRet[name] = m
     return toRet   
-
-  def otherVariables_fromMeasured(self, dicti:dict, dictiUncertainties:dict):
-    
-    dicti.update({ variable : self.measuredVariables[variable](dicti) for variable in self.measuredVariables.keys()})
-    dictiUncertainties.update(self.computeUncertainties(self.measuredVariables, dicti, dicti))
-    
-    return dicti
 
   def integralFluxes(self):
     if not (hasattr(self, 'trueFluxes')):
@@ -188,7 +183,11 @@ class TraversingData:
 
   def reductionMethod(func):
     def wrapper(self, *args, **kwargs):
-      reduced, metadata = func(self, *args, **kwargs)
+      lambdas, metadata = func(self, *args, **kwargs)
+
+      reduced = { variable : lambdas[variable](self.rawData) for variable in lambdas.keys()}
+      reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
+ 
       reduced.update(metadata)
       reduced['fluxes'], reduced['fluxesUncertainties'] = self.meanFluxes(reduced)
       return reduced
@@ -202,12 +201,16 @@ class TraversingData:
         'p01'   : lambda values: values['p01'][0],
         'p1'    : lambda values: values['p1'][0]
       })
-      
-      reduced = { variable : lambdas[variable](self.rawData) for variable in lambdas.keys()}
-      reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
-      reduced = self.otherVariables_fromMeasured(reduced, reduced['uncertainties'])
+      lambdas.update({
+        'M'    : lambda values : aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma']),
+        'T'    : lambda values : aux.t(aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma']), lambdas['T0'](values), self.fluid['gamma']),
+        'rho'  : lambda values : aux.rho(aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma']), lambdas['p0'](values)/lambdas['T0'](values)/self.fluid['r'], self.fluid['gamma']),
+        'v_mag': lambda values : aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma']) * np.sqrt( self.fluid['gamma'] * self.fluid['r'] * aux.t(aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma']), lambdas['T0'](values), self.fluid['gamma'])), 
+        'v_x'  : lambda values : aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma']) * np.sqrt( self.fluid['gamma'] * self.fluid['r'] * aux.t(aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma']), lambdas['T0'](values), self.fluid['gamma'])) * np.cos(lambdas['alpha'](values)),
+        'v_y'  : lambda values : aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma']) * np.sqrt( self.fluid['gamma'] * self.fluid['r'] * aux.t(aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma']), lambdas['T0'](values), self.fluid['gamma'])) * np.sin(lambdas['alpha'](values))
+      })
             
-      return reduced, metadata
+      return lambdas, metadata
 
     return wrapper
 
@@ -242,10 +245,7 @@ class TraversingData:
     lambdas['p_over_p0'] = lambda values: aux.p(lambdas['M'](values))
     lambdas['p0'] = lambda values: lambdas['p'](values)/lambdas['p_over_p0'](values)    
 
-    reduced= { variable : lambdas[variable](self.rawData) for variable in lambdas.keys()}
-    reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
-
-    return reduced, metadata
+    return lambdas, metadata
 
   @reductionMethod
   def reduction_strictlyConservative(self):
@@ -269,11 +269,7 @@ class TraversingData:
       'method_abbr' : 'SC'
     }
 
-    reduced = { variable : lambdas[variable](self.rawData) for variable in lambdas.keys()}
-
-    reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)
-
-    return reduced, metadata
+    return lambdas, metadata
 
   @reductionMethod
   @averagingMethod
@@ -344,7 +340,6 @@ class TraversingData:
                   'method_abbr' : r'$s$',
     }
     return lambdas, metadata
- 
 
   def weighted(self, how, what, values):
     assert how in ['mass', 'massFlux', 'area']

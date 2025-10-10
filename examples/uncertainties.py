@@ -15,14 +15,14 @@ Dataset = wd.TraversingData( { 'p' : data[:,1], 'p0' :data[:,0], 'alpha':np.deg2
                             inlet={'p':92099., 'p0':96091., 'T0':t0}, 
                             uncertainties={'alpha':np.deg2rad(0.6)} 
                             )
-'''
+
 var2check = 'T'
 print(f'T[0]= {Dataset.rawData[var2check][0] :.3f} +/- {Dataset.rawDataUncertainties[var2check][0]*2 :.3f} K')
 
 Dataset.integralFluxes()
 for flux in Dataset.trueFluxesUncertainties.keys():
   print(f'integrated {flux} = {Dataset.trueFluxes[flux] :.3f} +/- {Dataset.trueFluxesUncertainties[flux] :.3f}, uncertainty is {Dataset.trueFluxesUncertainties[flux]/Dataset.trueFluxes[flux]*100 :.3f} %')
-'''
+reses = Dataset.reduceByAll()
 def printResult(res):
   
   print()
@@ -32,4 +32,6 @@ def printResult(res):
     print(f'   <{v}> = {res[v] :.6f} +/- {res["uncertainties"][v] :.6f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
   print(f'   <alpha> = {np.rad2deg(res['alpha']) :.6f} +/- {np.rad2deg(res["uncertainties"]["alpha"]) :.6f}, uncertainty is {res["uncertainties"]['alpha']/res['alpha'] *100 :.3f} %')  
   #pprint(res['fluxes'])
-printResult(Dataset.reduction_momentumMethod())
+
+for res in reses:
+  printResult(res)
