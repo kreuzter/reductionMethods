@@ -13,7 +13,7 @@ t0 = data[0,-1]/aux.t(aux.ma_is(data[0,1], data[0,0]))
 
 Dataset = wd.TraversingData( { 'p' : data[:,1], 'p0' :data[:,0], 'alpha':np.deg2rad(data[:,2]), 'x':np.linspace(0,1,len(data[:,0]))}, 
                             inlet={'p':92099., 'p0':96091., 'T0':t0}, 
-                            uncertainties={'alpha':np.deg2rad(0.6)} 
+                            uncertainties={'alpha':np.deg2rad(0.6), 'p':50, 'p0':50, 'p01':17, 'T0':0.3} 
                             )
 
 var2check = 'T'
@@ -29,10 +29,9 @@ def printResult(res):
   print()
   print(res['method_name'])
   #pprint(res)
-  for v in ['p0', 'p', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M']:
+  for v in ['p0', 'p', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M', 'kineticEnergyLossCoefficient','totalPressureLossCoefficient_dynIn' ,'totalPressureLossCoefficient_dynOut','totalPressureLossCoefficient_totIn', 'I_M','I_A','I_F','I_C','I_H','I_S' ]:
     print(f'   <{v}> = {res[v] :.6f} +/- {res["uncertainties"][v] :.6f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
-  print(f'   <alpha> = {np.rad2deg(res['alpha']) :.6f} +/- {np.rad2deg(res["uncertainties"]["alpha"]) :.6f}, uncertainty is {res["uncertainties"]['alpha']/res['alpha'] *100 :.3f} %')  
-  #pprint(res['fluxes'])
+  print(f'   <alpha> = {np.rad2deg(res['alpha']) :.6f} +/- {np.rad2deg(res["uncertainties"]["alpha"]) :.6f}')  
 
 for res in reses.keys():
   printResult(reses[res])

@@ -95,24 +95,7 @@ class TraversingData:
     p = self.fluid['r']*dicti['T']*dicti['rho']
     satisfied = np.isclose(dicti['p'], p, atol=1)
     return satisfied, p-dicti['p']
-  
-  def getLosses(self, dicti:dict):
-    losses = aux.losses(dicti['p'],self.inlet['p'],dicti['p0'], self.inlet['p0'])
-
-    lossesUncertainties = dict()
-    for lossName in aux.losses.keys():
     
-      losses[lossName] = aux.losses[lossName](dicti['p'], dicti['p1'],dicti['p0'], dicti['p01'], self.fluid['gamma'])
-
-      localUncs = dict()
-      for variable2 in self.rawDataUncertainties.keys():
-        localDicti = { v : dicti[v] for v in dicti.keys()}
-        localDicti[variable2] = dicti[variable2] + self.rawDataUncertainties[variable2][0]
-        localUncs[variable2] = aux.lossesIntegrands[lossName](localDicti['p'],localDicti['p0'],localDicti['alpha'], localDicti['T0'], localDicti['p01'], self.fluid) -losses[lossName]
-
-      lossesUncertainties[lossName] = np.linalg.norm(np.array( [localUncs[v] for v in localUncs.keys()] ), axis=0)  
-    return losses, lossesUncertainties
-  
   def getEntropyIncrease(self, dicti:dict):
     s = self.integralFluxes()[0]['I_S']/self.integralFluxes()[0]['I_M']
     return ((aux.s(dicti['p0'], self.inlet['p0'], self.fluid['r']) - s)/s)*100
@@ -184,6 +167,20 @@ class TraversingData:
   def reductionMethod(func):
     def wrapper(self, *args, **kwargs):
       lambdas, metadata = func(self, *args, **kwargs)
+      lambdas.update({
+      'kineticEnergyLossCoefficient'        : lambda values : aux.losses['kineticEnergyLossCoefficient'       ](lambdas['p'](values), lambdas['p1'](values), lambdas['p0'](values), lambdas['p01'](values), self.fluid['gamma']),
+      'totalPressureLossCoefficient_dynIn'  : lambda values : aux.losses['totalPressureLossCoefficient_dynIn' ](lambdas['p'](values), lambdas['p1'](values), lambdas['p0'](values), lambdas['p01'](values), self.fluid['gamma']),
+      'totalPressureLossCoefficient_dynOut' : lambda values : aux.losses['totalPressureLossCoefficient_dynOut'](lambdas['p'](values), lambdas['p1'](values), lambdas['p0'](values), lambdas['p01'](values), self.fluid['gamma']),
+      'totalPressureLossCoefficient_totIn'  : lambda values : aux.losses['totalPressureLossCoefficient_totIn' ](lambdas['p'](values), lambdas['p1'](values), lambdas['p0'](values), lambdas['p01'](values), self.fluid['gamma'])
+      })
+      lambdas.update({
+      'I_M' : lambda values :                   lambdas['v_x'](values)    * lambdas['rho'](values),
+      'I_A' : lambda values :                   lambdas['v_x'](values)**2 * lambdas['rho'](values),
+      'I_F' : lambda values :                   lambdas['v_x'](values)**2 * lambdas['rho'](values) + lambdas['p'](values),
+      'I_C' : lambda values :                   lambdas['v_x'](values)    * lambdas['rho'](values) * lambdas['v_y'](values) ,
+      'I_H' : lambda values :                   lambdas['v_x'](values)    * lambdas['rho'](values) * (lambdas['p'](values)/lambdas['p0'](values))**((self.fluid['gamma']-1)/self.fluid['gamma']),
+      'I_S' : lambda values : -self.fluid['r']*(lambdas['v_x'](values)    * lambdas['rho'](values) *np.log(lambdas['p0'](values)/lambdas['p01'](values))),        
+      })
 
       reduced = { variable : lambdas[variable](self.rawData) for variable in lambdas.keys()}
       reduced['uncertainties'] = self.computeUncertainties(lambdas, reduced, self.rawData)

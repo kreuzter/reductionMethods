@@ -21,24 +21,11 @@ rho_id = lambda p, t, r : p/r/t
 
 exponLosses = lambda gamma: (gamma-1)/gamma
 losses = {
-  'kineticEnergyLossCoefficient' :        lambda p_out, p_in, p0_out, p0_in, gamma : 1- (1-(p_out/p0_out)**exponLosses(gamma))/(1-(p_out/p0_in)**exponLosses(gamma)),
-  'totalPressureLossCoefficient_dynIn' :  lambda p_out, p_in, p0_out, p0_in, gamma : (p0_in-p0_out)/(p0_in-p_in),
+  'kineticEnergyLossCoefficient'        : lambda p_out, p_in, p0_out, p0_in, gamma : 1- (1-(p_out/p0_out)**exponLosses(gamma))/(1-(p_out/p0_in)**exponLosses(gamma)),
+  'totalPressureLossCoefficient_dynIn'  : lambda p_out, p_in, p0_out, p0_in, gamma : (p0_in-p0_out)/(p0_in-p_in),
   'totalPressureLossCoefficient_dynOut' : lambda p_out, p_in, p0_out, p0_in, gamma : (p0_in-p0_out)/(p0_out-p_out),
-  'totalPressureLossCoefficient_totIn' :  lambda p_out, p_in, p0_out, p0_in, gamma : (p0_in-p0_out)/(p0_in)
+  'totalPressureLossCoefficient_totIn'  : lambda p_out, p_in, p0_out, p0_in, gamma : (p0_in-p0_out)/(p0_in)
 }
-
-def kineticEnergyLossCoefficient(p_out, p_in, p0_out, p0_in, gamma=1.4):
-  expon = (gamma-1)/gamma
-  return 1- (1-(p_out/p0_out)**expon)/(1-(p_out/p0_in)**expon)
-
-def totalPressureLossCoefficient_dynIn(p_out, p_in, p0_out, p0_in, gamma=1.4):
-  return (p0_in-p0_out)/(p0_in-p_in)
-
-def totalPressureLossCoefficient_dynOut(p_out, p_in, p0_out, p0_in, gamma=1.4):
-  return (p0_in-p0_out)/(p0_out-p_out)
-
-def totalPressureLossCoefficient_totIn(p_out, p_in, p0_out, p0_in, gamma=1.4):
-  return (p0_in-p0_out)/(p0_in)
 
 normalize = lambda y: (y-y.min())/(y.max()-y.min())
 
