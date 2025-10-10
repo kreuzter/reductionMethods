@@ -262,6 +262,7 @@ class TraversingData:
     lambdas['M'] = lambda values : aux.ma_is(lambdas['p'](values), lambdas['p0'](values), self.fluid['gamma'])
     lambdas['v_x']  = lambda values: self.fluxesIntegrals['I_A'](values)/self.fluxesIntegrals['I_M'](values)
     lambdas['v_y']  = lambda values: self.fluxesIntegrals['I_C'](values)/self.fluxesIntegrals['I_M'](values)
+    lambdas['v_mag'] = lambda values: np.sqrt( lambdas['v_x'](values)**2 + lambdas['v_y'](values)**2 )
     lambdas['rho']  = lambda values: self.fluxesIntegrals['I_M'](values)/lambdas['v_x'](values)
 
     metadata = {

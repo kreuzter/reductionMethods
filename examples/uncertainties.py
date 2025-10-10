@@ -23,6 +23,7 @@ Dataset.integralFluxes()
 for flux in Dataset.trueFluxesUncertainties.keys():
   print(f'integrated {flux} = {Dataset.trueFluxes[flux] :.3f} +/- {Dataset.trueFluxesUncertainties[flux] :.3f}, uncertainty is {Dataset.trueFluxesUncertainties[flux]/Dataset.trueFluxes[flux]*100 :.3f} %')
 reses = Dataset.reduceByAll()
+
 def printResult(res):
   
   print()
@@ -33,5 +34,5 @@ def printResult(res):
   print(f'   <alpha> = {np.rad2deg(res['alpha']) :.6f} +/- {np.rad2deg(res["uncertainties"]["alpha"]) :.6f}, uncertainty is {res["uncertainties"]['alpha']/res['alpha'] *100 :.3f} %')  
   #pprint(res['fluxes'])
 
-for res in reses:
-  printResult(res)
+for res in reses.keys():
+  printResult(reses[res])
