@@ -16,7 +16,7 @@ def printResult(res):
   
   print()
   print(res['method_name'])
-  for v in ['p0', 'p', 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M', 'kineticEnergyLossCoefficient','totalPressureLossCoefficient_dynIn' ,'totalPressureLossCoefficient_dynOut','totalPressureLossCoefficient_totIn', 'I_M','I_A','I_F','I_C','I_H','I_S' ]:
+  for v in ['p0', 'p']: #, 'rho', 'T', 'v_mag', 'v_x', 'v_y', 'M', 'kineticEnergyLossCoefficient','totalPressureLossCoefficient_dynIn' ,'totalPressureLossCoefficient_dynOut','totalPressureLossCoefficient_totIn', 'I_M','I_A','I_F','I_C','I_H','I_S' ]:
     print(f'   <{v}> = {res[v] :.6f} +/- {res["uncertainties"][v] :.6f}, uncertainty is {res["uncertainties"][v]/res[v] *100 :.3f} %')
   print(f'   <alpha> = {np.rad2deg(res['alpha']) :.6f} +/- {np.rad2deg(res["uncertainties"]["alpha"]) :.6f}')  
 
@@ -27,8 +27,7 @@ for i,fileName in enumerate(fileNames):
     inlet[p] = inlet.pop(f'{p}1')
 
   data = np.loadtxt(f'data/{fileName}.csv', delimiter=';', skiprows=1)
-  t0 = data[0,-1]/aux.t(aux.ma_is(data[0,1], data[0,0]))
-  inlet['T0']
+  inlet['T0'] = data[0,-1]/aux.t(aux.ma_is(data[0,1], data[0,0]))
 
   Dataset = wd.TraversingData( { 'p' : data[:,1], 'p0' :data[:,0], 'alpha':np.deg2rad(data[:,2]), 'x':np.linspace(0,1,len(data[:,0]))}, 
                               inlet=inlet, 
@@ -43,5 +42,10 @@ for i,fileName in enumerate(fileNames):
     print(f'integrated {flux} = {Dataset.trueFluxes[flux] :.3f} +/- {Dataset.trueFluxesUncertainties[flux] :.3f}, uncertainty is {Dataset.trueFluxesUncertainties[flux]/Dataset.trueFluxes[flux]*100 :.3f} %')
   reses = Dataset.reduceByAll()
 
-  with open(f'reductionMethods/data/jsons/{fileName}.json', 'w') as outfile:
+  for res in reses.keys():
+    printResult(reses[res])
+
+  with open(f'/media/kreuzter/volume/PhD/reductionMethods/examples/data/jsons/{fileName}.json', 'w') as outfile:
     json.dump(reses, outfile)
+
+  Dataset.rawData = { v: np.empty(len(Dataset.rawData['p'])) for v in Dataset.rawData.keys()}
